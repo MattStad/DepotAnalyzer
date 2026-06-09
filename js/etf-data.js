@@ -196,6 +196,90 @@ const ETF_DB = {
     },
     regions: { "France":30.8, "Germany":26.4, "Netherlands":14.8, "Italy":9.8, "Spain":7.8, "Other":10.4 },
     sectors: { "Technology":18.4, "Industrials":14.8, "Financials":18.4, "Consumer Disc":10.8, "Healthcare":8.8, "Energy":8.4, "Consumer Staples":6.8, "Materials":6.8, "Communication":4.1, "Utilities":3.7 }
+  },
+
+  /* ── User's actual ETFs (from securities_export) ── */
+  "XDWD2": {
+    name: "Xtrackers MSCI World Swap UCITS ETF 1D", isin: "LU2263803533",
+    ter: 0.19, aum: 7800, currency: "USD",
+    description: "MSCI World Index — synthetic swap replication, distributing",
+    holdings: {
+      "AAPL":4.85,"MSFT":4.35,"NVDA":3.88,"AMZN":2.75,"META":2.05,
+      "GOOGL":1.72,"GOOG":1.50,"AVGO":1.38,"TSLA":1.15,"LLY":1.11,
+      "BRK.B":0.96,"JPM":0.90,"WMT":0.79,"V":0.77,"UNH":0.76,
+      "XOM":0.69,"MA":0.67,"JNJ":0.60,"HD":0.59,"PG":0.58,
+      "ASML":0.47,"SAP":0.42,"NVO":0.42,"NESN":0.40,"TM":0.43
+    },
+    regions: { "North America":70.1,"Europe":15.8,"Japan":5.6,"Pacific ex-JP":4.5,"Other":4.0 },
+    sectors: { "Technology":23.1,"Financials":14.6,"Healthcare":12.0,"Consumer Disc":11.0,"Industrials":10.7,"Communication":8.5,"Consumer Staples":6.8,"Energy":4.4,"Materials":3.7,"Utilities":2.4,"Real Estate":2.8 }
+  },
+  "XDWT": {
+    name: "Xtrackers MSCI World IT Sector UCITS ETF", isin: "IE00BM67HT60",
+    ter: 0.25, aum: 2100, currency: "USD",
+    description: "MSCI World Information Technology sector — concentrated tech exposure",
+    holdings: {
+      "MSFT":18.42,"NVDA":16.84,"AAPL":15.91,"AVGO":5.84,"AMD":3.41,
+      "ORCL":3.21,"CRM":2.98,"ACN":2.84,"INTU":2.41,"ASML":2.18,
+      "IBM":1.98,"ADBE":1.84,"TXN":1.72,"CSCO":1.58,"NOW":1.41,
+      "SAP":1.38,"QCOM":1.32,"AMAT":1.28,"LRCX":1.12,"SNPS":0.98
+    },
+    regions: { "United States":75.4,"Europe":12.8,"Japan":5.1,"South Korea":3.4,"Other":3.3 },
+    sectors: { "Technology":100 }
+  },
+  "ACWI-SC": {
+    name: "Xtrackers MSCI ACWI Small Cap Swap UCITS ETF", isin: "IE00BGHQ0G80",
+    ter: 0.40, aum: 1800, currency: "USD",
+    description: "MSCI ACWI Small Cap — ~5000 global small-cap stocks",
+    holdings: {
+      "SMCI":0.18,"CIVI":0.16,"HLI":0.15,"INSM":0.14,"TREX":0.13,
+      "LGND":0.12,"FTAI":0.11,"VIRT":0.10,"TNL":0.10,"MDGL":0.10
+    },
+    regions: { "North America":57.4,"Europe":18.8,"Japan":9.2,"Pacific ex-JP":6.8,"Emerging Markets":5.4,"Other":2.4 },
+    sectors: { "Industrials":15.8,"Technology":13.4,"Financials":13.2,"Consumer Disc":12.8,"Healthcare":11.4,"Materials":7.8,"Real Estate":6.4,"Energy":5.8,"Consumer Staples":5.1,"Communication":3.8,"Utilities":4.3 }
+  },
+  "ICOM": {
+    name: "iShares Diversified Commodity Swap UCITS ETF", isin: "IE00BDFL4P12",
+    ter: 0.19, aum: 2400, currency: "USD",
+    description: "Bloomberg Commodity Index — diversified commodity exposure via swaps",
+    holdings: {},
+    regions: { "Global Commodities": 100 },
+    sectors: { "Energy":32.4,"Agriculture":28.8,"Metals":22.4,"Livestock":10.2,"Other Commodities":6.2 }
+  },
+  "BNKS": {
+    name: "iShares S&P U.S. Banks UCITS ETF", isin: "IE00BD3V0B10",
+    ter: 0.35, aum: 980, currency: "USD",
+    description: "S&P Banks Select Industry Index — US bank stocks",
+    holdings: {
+      "JPM":10.42,"BAC":9.84,"WFC":8.21,"GS":7.84,"MS":6.98,
+      "C":6.42,"USB":4.84,"TFC":3.98,"PNC":3.84,"SCHW":3.41,
+      "COF":3.12,"BK":2.98,"STT":2.84,"KEY":2.41,"FITB":2.28
+    },
+    regions: { "United States": 100 },
+    sectors: { "Financials": 100 }
+  },
+  "INRG": {
+    name: "iShares Global Clean Energy UCITS ETF", isin: "IE00B1XNHC34",
+    ter: 0.65, aum: 3200, currency: "USD",
+    description: "S&P Global Clean Energy Index — clean energy producers and tech",
+    holdings: {
+      "ENPH":8.42,"NEE":7.84,"CEG":7.21,"FSLR":6.84,"ORSTED":6.41,
+      "RUN":5.84,"BEP":5.21,"AES":4.98,"SEDG":4.84,"PLUG":3.41,
+      "VESTAS":3.12,"EDP":2.98,"IBERDROLA":2.84,"ENEL":2.41,"SOLAREDS":2.18
+    },
+    regions: { "United States":42.4,"Europe":28.8,"Canada":8.4,"China":6.8,"Other":13.6 },
+    sectors: { "Energy":60.4,"Utilities":28.8,"Technology":7.4,"Industrials":3.4 }
+  },
+  "DFNS": {
+    name: "VanEck Defense UCITS ETF", isin: "IE000YYE6WK5",
+    ter: 0.55, aum: 1800, currency: "USD",
+    description: "MarketVector Global Defense Industry Index — global defence companies",
+    holdings: {
+      "RTX":9.84,"LMT":9.42,"NOC":8.84,"GD":8.21,"BA":7.98,
+      "L3H":5.84,"LHX":5.41,"HII":4.84,"LDOS":4.21,"BAH":3.98,
+      "RHM.DE":3.84,"AIR":3.41,"BA.L":3.12,"MBDA":2.84,"SAAB-B":2.41
+    },
+    regions: { "United States":66.8,"Europe":26.4,"Other":6.8 },
+    sectors: { "Industrials":72.4,"Technology":18.8,"Consumer Disc":8.8 }
   }
 };
 

@@ -2,7 +2,10 @@
 class MacroDashboard {
   constructor() { this.charts = {}; }
 
-  init() { this.render(); }
+  init() {
+    // Charts are rendered lazily by app.navigate('macro') so that
+    // Chart.js sees a visible canvas with non-zero dimensions.
+  }
 
   render() {
     this.renderCentralBankRates();

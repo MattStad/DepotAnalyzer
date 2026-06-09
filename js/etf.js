@@ -22,16 +22,29 @@ class ETFAnalyzer {
   detectFromPortfolio(holdings) {
     this.selected = [];
     for (const h of holdings) {
-      const match = ETF_LIST.find(e =>
-        e.isin === h.isin ||
-        h.name.toLowerCase().includes(e.ticker.toLowerCase()) ||
-        e.name.toLowerCase().split(' ').some(w => w.length > 4 && h.name.toLowerCase().includes(w))
-      );
+      // 1. Exact ISIN match (most reliable — abbreviations in CSV don't matter)
+      let match = ETF_LIST.find(e => e.isin && e.isin === h.isin);
+
+      // 2. Fuzzy name match as fallback
+      if (!match) {
+        const hn = h.name.toLowerCase();
+        match = ETF_LIST.find(e => {
+          const en = e.name.toLowerCase();
+          return hn.includes(e.ticker.toLowerCase()) ||
+            en.split(' ').some(w => w.length > 5 && hn.includes(w));
+        });
+      }
+
       if (match && !this.selected.includes(match.ticker)) {
         this.selected.push(match.ticker);
       }
     }
     if (this.selected.length) this.render();
+    else {
+      // Show empty state with message
+      document.getElementById('etf-chips').innerHTML =
+        '<span style="color:var(--text3);font-size:12px">No ETFs detected — add them manually using the dropdown above</span>';
+    }
   }
 
   addETF(ticker) {
