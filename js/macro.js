@@ -117,6 +117,35 @@ class MacroDashboard {
     } catch { return null; }
   }
 
+  /* Yahoo Finance multi-symbol quotes via the shared free CORS proxy (no key).
+     Returns { SYMBOL: { price, chgPct } }. Used for live commodities & yields. */
+  async _fetchYahooSpark(symbols, range = '1mo') {
+    const cacheKey = 'yspark_' + range + '_' + symbols.join(',');
+    const hit = this._cget(cacheKey);
+    if (hit !== null) return hit;
+    if (typeof proxyFetchJson !== 'function') return null;
+    const url = 'https://query1.finance.yahoo.com/v8/finance/spark?symbols='
+              + symbols.map(encodeURIComponent).join(',') + `&range=${range}&interval=1d`;
+    const d = await proxyFetchJson(url);
+    if (!d) return null;
+    const out = {};
+    for (const s of symbols) {
+      let q = d[s];
+      if (!q && d.spark?.result) {
+        const r = d.spark.result.find(x => x.symbol === s)?.response?.[0];
+        if (r) q = { close: r.indicators?.quote?.[0]?.close, chartPreviousClose: r.meta?.chartPreviousClose };
+      }
+      const closes = Array.isArray(q?.close) ? q.close.filter(x => x != null) : [];
+      if (!closes.length) continue;
+      const price = closes[closes.length - 1];
+      const prev  = q.chartPreviousClose;
+      out[s] = { price, chgPct: prev ? +((price / prev - 1) * 100).toFixed(1) : null };
+    }
+    if (!Object.keys(out).length) return null;
+    this._cset(cacheKey, out, 14_400_000);   // 4 h
+    return out;
+  }
+
   /* ─── AV data accessor helpers ──────────────────────────── */
   _latest(data, count = 1) {
     if (!data?.data?.length) return count === 1 ? null : [];
@@ -174,11 +203,15 @@ class MacroDashboard {
     const TTL_FX     =  3_600_000;  //  1 h — exchange rates
 
     // Fire all fetches in parallel
+    const COM_SYMS = ['GC=F','SI=F','CL=F','BZ=F','NG=F','HG=F','ZW=F','ZC=F'];
+    const YLD_SYMS = ['^IRX','2YY=F','^FVX','^TNX','^TYX'];
+
     const [
       fedR, cpiR, gdpR, unemR, nfpR,
       y3m, y2y, y5y, y10y, y30y,
       wtiR, brentR, ngR, copperR, wheatR, cornR,
       fxR, cryptoR, ecbR, fngR, boeR,
+      yComR, yYldR,
     ] = await Promise.allSettled([
       k ? this._av({ function: 'FEDERAL_FUNDS_RATE', interval: 'monthly' },   'fed_rate',    TTL_ECON) : Promise.resolve(null),
       k ? this._av({ function: 'CPI',                interval: 'monthly' },   'cpi',         TTL_ECON) : Promise.resolve(null),
@@ -201,25 +234,32 @@ class MacroDashboard {
       this._fetchECBRate(),
       this._fetchFearGreed(),
       this._fetchBoERate(),   // optional — CORS may block; graceful fallback
+      this._fetchYahooSpark(COM_SYMS, '1mo'),   // live commodities, no key
+      this._fetchYahooSpark(YLD_SYMS, '1mo'),   // live yield curve, no key
     ]);
 
     const v = r => r.status === 'fulfilled' ? r.value : null;
 
+    const yCom = v(yComR), yYld = v(yYldR);
+
     this.renderCentralBankRates(v(fedR), v(ecbR), v(boeR));
     this.renderCPI(v(cpiR));
-    this.renderYieldCurve({ y3m: v(y3m), y2y: v(y2y), y5y: v(y5y), y10y: v(y10y), y30y: v(y30y) });
+    this.renderYieldCurve({ y3m: v(y3m), y2y: v(y2y), y5y: v(y5y), y10y: v(y10y), y30y: v(y30y), yahoo: yYld });
     this.renderGDP(v(gdpR));
     this.renderLaborMarket(v(unemR), v(nfpR));
-    this.renderCommodities({ wti: v(wtiR), brent: v(brentR), ng: v(ngR), copper: v(copperR), wheat: v(wheatR), corn: v(cornR), fx: v(fxR) });
+    this.renderCommodities({ wti: v(wtiR), brent: v(brentR), ng: v(ngR), copper: v(copperR), wheat: v(wheatR), corn: v(cornR), fx: v(fxR), yahoo: yCom });
     this.renderFX(v(fxR), v(cryptoR));
     this.renderSentiment(v(fngR));
     this.renderCalendar();
     this.renderCAPE();
 
-    // Update freshness badge
+    // Update freshness badge — market data (commodities, yields, FX, crypto, ECB)
+    // is live without a key; only US macro indicators (CPI/GDP/labor/Fed) need AV.
     const ts = new Date().toLocaleString('de-AT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
     const el = document.getElementById('macro-freshness');
-    if (el) el.textContent = k ? `📡 Live · ${ts}` : `⚠ Kein API-Key · Statische Daten`;
+    if (el) el.textContent = k
+      ? `📡 Live · ${ts}`
+      : `📡 Märkte live · ⚠ US-Konjunktur statisch · ${ts}`;
   }
 
   /* ─── Central Bank Rates ─────────────────────────────────── */
@@ -310,17 +350,21 @@ class MacroDashboard {
   }
 
   /* ─── US Yield Curve ─────────────────────────────────────── */
-  renderYieldCurve({ y3m, y2y, y5y, y10y, y30y }) {
+  renderYieldCurve({ y3m, y2y, y5y, y10y, y30y, yahoo }) {
     const ctx = document.getElementById('yield-chart')?.getContext('2d');
     if (!ctx) return;
     if (this.charts.yield) { this.charts.yield.destroy(); this.charts.yield = null; }
 
+    const Y = yahoo || {};
+    const yv = s => Y[s]?.price ?? null;
     const pick = d => { const l = this._latest(d); return l ? parseFloat(l.value) : null; };
-    const live = [pick(y3m), pick(y2y), pick(y5y), pick(y10y), pick(y30y)];
-    const hasLive = live.some(v => v !== null);
+    // Priority per maturity: Yahoo yield index (live, no key) → Alpha Vantage → static
+    const yYahoo = [yv('^IRX'), yv('2YY=F'), yv('^FVX'), yv('^TNX'), yv('^TYX')];
+    const yAv    = [pick(y3m), pick(y2y), pick(y5y), pick(y10y), pick(y30y)];
     const fb   = [5.28, 4.88, 4.42, 4.28, 4.34];   // static fallback
-    const prev = [4.85, 4.72, 4.28, 4.08, 4.18];   // 1 year ago
-    const cur  = hasLive ? live.map((v, i) => v ?? fb[i]) : fb;
+    const prev = [4.85, 4.72, 4.28, 4.08, 4.18];   // 1 year ago (reference)
+    const hasLive = yYahoo.some(v => v !== null) || yAv.some(v => v !== null);
+    const cur  = yYahoo.map((v, i) => v ?? yAv[i] ?? fb[i]);
     const labels = ['3M', '2J', '5J', '10J', '30J'];
 
     // Yield spread 10Y–2Y (key recession indicator)
@@ -428,8 +472,8 @@ class MacroDashboard {
   }
 
   /* ─── Commodities ────────────────────────────────────────── */
-  renderCommodities({ wti, brent, ng, copper, wheat, corn, fx }) {
-    // pct change: compare latest to N periods ago
+  renderCommodities({ wti, brent, ng, copper, wheat, corn, fx, yahoo }) {
+    // pct change: compare latest to N periods ago (Alpha Vantage series)
     const pct = (d, n = 1) => {
       if (!d?.data?.length) return null;
       const sorted = [...d.data]
@@ -441,34 +485,39 @@ class MacroDashboard {
     };
     const pickV = d => { const l = this._latest(d); return l ? parseFloat(l.value) : null; };
 
-    // Gold/Silver from FX rates (XAU, XAG are vs USD)
-    // open.er-api rates[XAU] = oz per 1 USD, so gold price = 1 / rates.XAU
-    const goldPrice   = fx?.XAU ? +(1 / fx.XAU).toFixed(0)   : null;
-    const silverPrice = fx?.XAG ? +(1 / fx.XAG).toFixed(2)   : null;
+    // Gold/Silver fallback from FX rates (XAU/XAG vs USD) if Yahoo unavailable
+    const goldFx   = fx?.XAU ? +(1 / fx.XAU).toFixed(0)  : null;
+    const silverFx = fx?.XAG ? +(1 / fx.XAG).toFixed(2)  : null;
 
+    const Y = yahoo || {};
+    const yv = s => Y[s]?.price ?? null;
+    const yc = s => Y[s]?.chgPct ?? null;
+
+    // Priority per row: Yahoo (live, no key) → Alpha Vantage → static fallback
     const items = [
-      { label: 'Gold',      val: goldPrice,    chg: null,    unit: '$/oz', live: goldPrice !== null },
-      { label: 'Silber',    val: silverPrice,  chg: null,    unit: '$/oz', live: silverPrice !== null },
-      { label: 'WTI Öl',   val: pickV(wti),   chg: pct(wti),   unit: '$/bbl', live: !!wti },
-      { label: 'Brent',    val: pickV(brent),  chg: pct(brent), unit: '$/bbl', live: !!brent },
-      { label: 'Erdgas',   val: pickV(ng),     chg: pct(ng),    unit: '$/MMBtu', live: !!ng },
-      { label: 'Kupfer',   val: pickV(copper), chg: pct(copper),unit: '$/lb', live: !!copper },
-      { label: 'Weizen',   val: pickV(wheat),  chg: pct(wheat), unit: '$/bu', live: !!wheat },
-      { label: 'Mais',     val: pickV(corn),   chg: pct(corn),  unit: '$/bu', live: !!corn },
+      { label: 'Gold',    sym: 'GC=F', avVal: goldFx,        avChg: null },
+      { label: 'Silber',  sym: 'SI=F', avVal: silverFx,      avChg: null },
+      { label: 'WTI Öl',  sym: 'CL=F', avVal: pickV(wti),    avChg: pct(wti) },
+      { label: 'Brent',   sym: 'BZ=F', avVal: pickV(brent),  avChg: pct(brent) },
+      { label: 'Erdgas',  sym: 'NG=F', avVal: pickV(ng),     avChg: pct(ng) },
+      { label: 'Kupfer',  sym: 'HG=F', avVal: pickV(copper), avChg: pct(copper) },
+      { label: 'Weizen',  sym: 'ZW=F', avVal: pickV(wheat),  avChg: pct(wheat) },
+      { label: 'Mais',    sym: 'ZC=F', avVal: pickV(corn),   avChg: pct(corn) },
     ];
 
-    // Static fallbacks
+    // Static fallbacks [price, chg%]
     const FB = { Gold:[2380,15.2], Silber:[29.5,22.1], 'WTI Öl':[79.8,-4.2], Brent:[84.2,-3.8],
                  Erdgas:[2.42,-28.4], Kupfer:[4.48,8.1], Weizen:[612,-12.2], Mais:[447,-18.4] };
 
     document.getElementById('commodities-block').innerHTML = `<div class="commodity-grid">
       ${items.map(d => {
-        const val    = d.val ?? FB[d.label]?.[0];
-        const chgVal = d.chg ?? FB[d.label]?.[1];
+        const val    = yv(d.sym) ?? d.avVal ?? FB[d.label]?.[0];
+        const chgVal = yc(d.sym) ?? d.avChg ?? FB[d.label]?.[1];
+        const live   = yv(d.sym) != null || d.avVal != null;
         const pos    = chgVal != null ? chgVal >= 0 : true;
         return `<div class="data-row">
           <div>
-            <div class="label">${d.label}${d.live ? ' <span style="font-size:9px;color:var(--cyan)">●</span>' : ''}</div>
+            <div class="label">${d.label}${live ? ' <span style="font-size:9px;color:var(--cyan)">●</span>' : ''}</div>
             <div class="val">${val != null ? '$' + (val > 100 ? Math.round(val).toLocaleString('en') : val.toFixed(2)) : '—'}</div>
           </div>
           <span class="chg ${pos ? 'green' : 'red'}">${chgVal != null ? (pos ? '+' : '') + chgVal.toFixed(1) + '%' : '—'}</span>
