@@ -201,6 +201,39 @@ class StockResearch {
     return data?.chart?.result?.[0] || null;
   }
 
+  /* Fundamentals via Yahoo's fundamentals-timeseries endpoint — works WITHOUT a
+     crumb/key (unlike quoteSummary). Returns the latest value per metric so we can
+     compute P/E, P/B, market cap, ROE, ROA, margins, debt/equity etc. for free. */
+  async _fetchYahooFundamentals(yhTicker) {
+    const now = Math.floor(Date.now() / 1000);
+    const p1  = now - 800 * 24 * 3600;   // ~2 years back to capture the latest fiscal year
+    const types = [
+      // valuation ratios (trailing snapshots)
+      'trailingPeRatio', 'trailingPbRatio', 'trailingPsRatio', 'trailingPegRatio',
+      // income statement (annual)
+      'annualTotalRevenue', 'annualNetIncome', 'annualGrossProfit', 'annualEBITDA', 'annualDilutedEPS',
+      // balance sheet
+      'annualStockholdersEquity', 'annualTotalAssets', 'annualTotalDebt',
+      'annualCurrentAssets', 'annualCurrentLiabilities', 'annualCashAndCashEquivalents', 'annualOrdinarySharesNumber',
+      // cash flow + dividends
+      'annualFreeCashFlow', 'annualCashDividendsPaid',
+    ].join(',');
+    const url = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(yhTicker)}`
+              + `?symbol=${encodeURIComponent(yhTicker)}&type=${types}&period1=${p1}&period2=${now}`;
+    const d = await proxyFetchJson(url);
+    const res = d?.timeseries?.result;
+    if (!Array.isArray(res)) return null;
+    const f = {};
+    for (const item of res) {
+      const type = item?.meta?.type?.[0];
+      if (!type) continue;
+      const arr  = item[type];
+      const last = Array.isArray(arr) ? arr.filter(Boolean).pop() : null;
+      if (last?.reportedValue?.raw != null) f[type] = last.reportedValue.raw;
+    }
+    return Object.keys(f).length ? f : null;
+  }
+
   renderYahooChart(result) {
     const ctx = document.getElementById('res-price-chart')?.getContext('2d');
     if (!ctx || !result) return;
@@ -259,18 +292,38 @@ class StockResearch {
     return { strongBuy: r('strongBuy'), buy: r('buy'), hold: r('hold'), sell: r('sell'), strongSell: r('strongSell') };
   }
 
-  /* Build the overview from Yahoo chart meta only (no API key needed).
-     Yahoo's fundamentals endpoint (quoteSummary) requires crumb auth that is
-     unavailable from the browser, so ratios/financials need an Alpha Vantage key.
-     We show the real, live values we DO have and mark the rest as unavailable —
-     never fabricated numbers. */
-  renderYahooOverview(avTicker, chartResult) {
+  /* Build the overview from the Yahoo chart feed + fundamentals-timeseries — all
+     free, no API key. Valuation ratios, financials, market cap, ROE/ROA/margins
+     are derived from real data. Only analyst ratings/targets need a key (Yahoo's
+     analyst data is crumb-locked); everything else is live. */
+  renderYahooOverview(avTicker, chartResult, fund) {
     const meta = chartResult?.meta || {};
     const ccy  = meta.currency === 'EUR' ? '€' : /GBP/i.test(meta.currency || '') ? '£' : '$';
     const cur  = meta.regularMarketPrice != null ? meta.regularMarketPrice : 0;
     const hi52 = meta.fiftyTwoWeekHigh, lo52 = meta.fiftyTwoWeekLow;
     const NA   = '—';
     const fp   = v => v != null && !isNaN(v) ? `${ccy}${(+v).toFixed(2)}` : NA;
+    const fx   = (v, d = 1) => v != null && !isNaN(v) ? (+v).toFixed(d) : NA;
+    const fpct = v => v != null && !isNaN(v) ? (+v).toFixed(1) + '%' : NA;
+
+    // ── Derive metrics from fundamentals (all real, computed from reported values) ──
+    const f       = fund || {};
+    const shares  = f.annualOrdinarySharesNumber;
+    const rev     = f.annualTotalRevenue, ni = f.annualNetIncome, gp = f.annualGrossProfit;
+    const ebitda  = f.annualEBITDA, eps = f.annualDilutedEPS;
+    const eq      = f.annualStockholdersEquity, ta = f.annualTotalAssets, debt = f.annualTotalDebt;
+    const cAsset  = f.annualCurrentAssets, cLiab = f.annualCurrentLiabilities, cash = f.annualCashAndCashEquivalents;
+    const fcf     = f.annualFreeCashFlow, divPaid = f.annualCashDividendsPaid;
+    const mktcap  = (shares && cur) ? shares * cur : null;
+    const ev      = mktcap != null ? mktcap + (debt || 0) - (cash || 0) : null;
+    const roe     = (ni && eq) ? ni / eq * 100 : null;
+    const roa     = (ni && ta) ? ni / ta * 100 : null;
+    const margin  = (ni && rev) ? ni / rev * 100 : null;
+    const de      = (debt && eq) ? debt / eq : null;
+    const curR    = (cAsset && cLiab) ? cAsset / cLiab : null;
+    const evEbit  = (ev && ebitda) ? ev / ebitda : null;
+    const evRev   = (ev && rev) ? ev / rev : null;
+    const divYld  = (divPaid && mktcap) ? Math.abs(divPaid) / mktcap * 100 : null;
 
     // Exchange label — map Yahoo exchange codes to friendly names
     const exchMap = { NMS:'NASDAQ', NGM:'NASDAQ', NCM:'NASDAQ', NYQ:'NYSE', PCX:'NYSE Arca',
@@ -285,45 +338,66 @@ class StockResearch {
     setText('res-sector',   '');
     setText('res-industry', '');
     document.getElementById('stock-avatar').textContent = avTicker.substring(0, 2).toUpperCase();
-    setText('res-mktcap', '');
+    setText('res-mktcap', mktcap ? `Market Cap: ${fmtLargeNumCcy(mktcap, ccy)}` : '');
 
-    // Valuation — not derivable from the chart feed
-    document.getElementById('valuation-grid').innerHTML =
-      ['P/E (TTM)','P/E (Forward)','P/B','P/S','EV/EBITDA','EV/Revenue','PEG','Div Yield']
-        .map(l => `<div class="metric-item"><div class="metric-label">${l}</div><div class="metric-value">${NA}</div></div>`).join('');
+    // Valuation metrics (real; forward P/E needs analyst estimates → not free)
+    document.getElementById('valuation-grid').innerHTML = [
+      { label: 'P/E (TTM)',     val: fx(f.trailingPeRatio) },
+      { label: 'P/E (Forward)', val: NA },
+      { label: 'P/B',           val: fx(f.trailingPbRatio, 2) },
+      { label: 'P/S',           val: fx(f.trailingPsRatio, 2) },
+      { label: 'EV/EBITDA',     val: fx(evEbit) },
+      { label: 'EV/Revenue',    val: fx(evRev, 2) },
+      { label: 'PEG',           val: fx(f.trailingPegRatio, 2) },
+      { label: 'Div Yield',     val: divYld != null ? fpct(divYld) : NA },
+    ].map(m => `<div class="metric-item"><div class="metric-label">${m.label}</div><div class="metric-value">${m.val}</div></div>`).join('');
 
-    // Analyst — honest note (no fabricated ratings)
+    // Analyst — Yahoo's analyst data is crumb-locked; needs optional AV key
     document.getElementById('analyst-block').innerHTML =
       `<div style="color:var(--text3);font-size:12px;padding:10px 0;line-height:1.6">
-         Analystendaten & Fundamentalkennzahlen benötigen einen kostenlosen
-         <strong style="color:var(--text2)">Alpha-Vantage-Key</strong> (Einstellungen → 🔑).<br>
-         <span style="color:var(--accent-cyan)">Preis, Chart und 52-Wochen-Spanne sind live.</span>
+         Analystenbewertungen & Kursziele sind nur mit einem (kostenlosen)
+         <strong style="color:var(--text2)">Alpha-Vantage-Key</strong> verfügbar (Einstellungen → 🔑).<br>
+         <span style="color:var(--accent-cyan)">Preis, Chart, Kennzahlen & Bilanz sind live.</span>
        </div>`;
 
-    // Price targets — real 52W range + current price (no analyst target without a key)
+    // Price targets — real current price + 52W range (no analyst target without a key)
     this.renderPriceTargets({ low: lo52 || 0, high: hi52 || 0, target: 0, current: cur, ccy });
 
-    // Financials — only the live values the chart feed provides
+    // Financials — live chart values + computed fundamentals
     const vol = meta.regularMarketVolume;
     document.getElementById('financials-grid').innerHTML = [
-      { label: 'Letzter Kurs',     val: fp(cur) },
+      { label: 'Revenue (FY)',     val: fmtLargeNumCcy(rev, ccy) },
+      { label: 'Gross Profit',     val: fmtLargeNumCcy(gp, ccy) },
+      { label: 'EBITDA',           val: fmtLargeNumCcy(ebitda, ccy) },
+      { label: 'Net Income (FY)',  val: fmtLargeNumCcy(ni, ccy) },
+      { label: 'EPS (Diluted)',    val: eps != null ? `${ccy}${(+eps).toFixed(2)}` : NA },
+      { label: 'ROE',              val: fpct(roe) },
+      { label: 'ROA',              val: fpct(roa) },
+      { label: 'Profit Margin',    val: fpct(margin) },
+      { label: 'Debt/Equity',      val: fx(de, 2) },
+      { label: 'Current Ratio',    val: fx(curR, 2) },
+      { label: 'Free Cash Flow',   val: fmtLargeNumCcy(fcf, ccy) },
+      { label: 'Shares Outst.',    val: shares != null ? fmtLargeNumCcy(shares, '').replace('$','') : NA },
       { label: '52W High',         val: fp(hi52) },
       { label: '52W Low',          val: fp(lo52) },
-      { label: 'Tages-Hoch',       val: fp(meta.regularMarketDayHigh) },
-      { label: 'Tages-Tief',       val: fp(meta.regularMarketDayLow) },
-      { label: 'Volumen',          val: vol != null ? (+vol).toLocaleString('de') : NA },
-      { label: 'Währung',          val: meta.currency || NA },
-      { label: 'Revenue (TTM)',    val: NA },
-      { label: 'EBITDA',           val: NA },
-      { label: 'Net Income (TTM)', val: NA },
-      { label: 'EPS (Diluted)',    val: NA },
-      { label: 'ROE',              val: NA },
-      { label: 'Beta',             val: NA },
-    ].map(f => `<div class="metric-card-large"><div class="label">${f.label}</div><div class="value">${f.val}</div></div>`).join('');
+    ].map(f2 => `<div class="metric-card-large"><div class="label">${f2.label}</div><div class="value">${f2.val}</div></div>`).join('');
 
-    // Peer comparison — sector peers only (current stock ratios unknown without a key)
+    // Peer comparison — real P/E and P/B for the searched stock vs its sector peers
     const cleanT = this._toYahooTicker(avTicker).replace(/\.(VI|DE|SW|AS|PA|MI|LS|BE|HK|KS|TW|L)$/, '');
-    this.renderPeerChart(cleanT, 'Technology', 0, 0);
+    const sector = this._sectorForTicker(avTicker, cleanT);
+    this.renderPeerChart(cleanT, sector, f.trailingPeRatio || 0, f.trailingPbRatio || 0);
+  }
+
+  /* Best-effort sector lookup so the peer chart compares like-for-like.
+     Reverse-matches the ticker against the SECTOR_PEERS lists (which include the
+     Austrian/EU names); falls back to Technology for unknown tickers. */
+  _sectorForTicker(avTicker, cleanT) {
+    for (const [sector, peers] of Object.entries(SECTOR_PEERS)) {
+      if (peers.some(p => p.ticker === avTicker || p.ticker === cleanT || p.ticker.split('.')[0] === cleanT)) {
+        return sector;
+      }
+    }
+    return 'Technology';
   }
 
   async search(input) {
@@ -340,14 +414,17 @@ class StockResearch {
     const key      = this.getApiKey();
     const yhTicker = this._toYahooTicker(ticker);
 
-    // Real price + chart from Yahoo (via free CORS proxy) — no key, all exchanges
-    const chartResult = await this._fetchYahooChart(yhTicker);
+    // Real price + chart + fundamentals from Yahoo (via free CORS proxy) — no key
+    const [chartResult, fund] = await Promise.all([
+      this._fetchYahooChart(yhTicker),
+      this._fetchYahooFundamentals(yhTicker),
+    ]);
 
     if (chartResult) {
       this.renderYahooChart(chartResult);
-      // Real baseline from the chart feed (price, chart, 52W). If an optional AV
-      // key is present, enrich with fundamentals; failure leaves the baseline intact.
-      this.renderYahooOverview(ticker, chartResult);
+      // Real baseline: price, chart, 52W, valuation, financials, peers — all live.
+      // If an optional AV key is present, enrich with analyst data on top.
+      this.renderYahooOverview(ticker, chartResult, fund);
       if (key) this.fetchOverview(ticker, key, /* skipPrice */ true);
     } else if (key) {
       // Yahoo proxy unreachable → optional Alpha Vantage fallback
@@ -647,7 +724,11 @@ class StockResearch {
     const ctx = document.getElementById('peer-chart').getContext('2d');
     if (this.peerChart) this.peerChart.destroy();
 
-    const peers = SECTOR_PEERS[sector] || SECTOR_PEERS['Technology'];
+    // Exclude the searched stock from the peer list to avoid a duplicate bar
+    const base = ticker.split('.')[0].toUpperCase();
+    const peers = (SECTOR_PEERS[sector] || SECTOR_PEERS['Technology'])
+      .filter(p => p.ticker.split('.')[0].toUpperCase() !== base)
+      .slice(0, 4);
     const labels = [ticker, ...peers.map(p => p.ticker)];
     const peData = [pe, ...peers.map(p => p.pe)];
     const pbData = [pb, ...peers.map(p => p.pb)];
