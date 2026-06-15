@@ -1,50 +1,470 @@
-/* Stock Research — Alpha Vantage + rich mock fallback */
+/* ── Local ticker database (AT + DE + US + NL) for offline autocomplete ── */
+const LOCAL_TICKER_DB = [
+  // Austria — Vienna Stock Exchange (.VIE suffix for Alpha Vantage)
+  { ticker:'EBS.VIE',  name:'Erste Group Bank AG',              region:'Wien',   isin:'AT0000652011' },
+  { ticker:'OMV.VIE',  name:'OMV AG',                           region:'Wien',   isin:'AT0000743059' },
+  { ticker:'VOE.VIE',  name:'voestalpine AG',                   region:'Wien',   isin:'AT0000937503' },
+  { ticker:'ANDR.VIE', name:'Andritz AG',                       region:'Wien',   isin:'AT0000730007' },
+  { ticker:'VER.VIE',  name:'Verbund AG',                       region:'Wien',   isin:'AT0000746409' },
+  { ticker:'RBI.VIE',  name:'Raiffeisen Bank International AG', region:'Wien',   isin:'AT0000606306' },
+  { ticker:'WIE.VIE',  name:'Wienerberger AG',                  region:'Wien',   isin:'AT0000827209' },
+  { ticker:'VIG.VIE',  name:'Vienna Insurance Group AG',        region:'Wien',   isin:'AT0000908504' },
+  { ticker:'POST.VIE', name:'Österreichische Post AG',          region:'Wien',   isin:'AT0000APOST4' },
+  { ticker:'STR.VIE',  name:'Strabag SE',                       region:'Wien',   isin:'AT000000STR1' },
+  { ticker:'SBO.VIE',  name:'Schoeller-Bleckmann AG',           region:'Wien',   isin:'AT0000946652' },
+  // Germany — XETRA (.DE suffix)
+  { ticker:'SAP.DE',   name:'SAP SE',                           region:'XETRA',  isin:'DE0007164600' },
+  { ticker:'SIE.DE',   name:'Siemens AG',                       region:'XETRA',  isin:'DE0007236101' },
+  { ticker:'ALV.DE',   name:'Allianz SE',                       region:'XETRA',  isin:'DE0008404005' },
+  { ticker:'BAS.DE',   name:'BASF SE',                          region:'XETRA',  isin:'DE000BASF111' },
+  { ticker:'DTE.DE',   name:'Deutsche Telekom AG',              region:'XETRA',  isin:'DE0005557508' },
+  { ticker:'BMW.DE',   name:'BMW AG',                           region:'XETRA',  isin:'DE0005190003' },
+  { ticker:'BAYN.DE',  name:'Bayer AG',                         region:'XETRA',  isin:'DE000BAY0017' },
+  { ticker:'VOW3.DE',  name:'Volkswagen AG (Vz)',               region:'XETRA',  isin:'DE0007664039' },
+  { ticker:'DBK.DE',   name:'Deutsche Bank AG',                 region:'XETRA',  isin:'DE0005140008' },
+  { ticker:'ADS.DE',   name:'Adidas AG',                        region:'XETRA',  isin:'DE000A1EWWW0' },
+  { ticker:'MRK.DE',   name:'Merck KGaA',                       region:'XETRA',  isin:'DE0006599905' },
+  { ticker:'RWE.DE',   name:'RWE AG',                           region:'XETRA',  isin:'DE0007037129' },
+  // Netherlands
+  { ticker:'ASML',     name:'ASML Holding N.V.',                region:'NASDAQ', isin:'NL0010273215' },
+  { ticker:'HEIA.AS',  name:'Heineken N.V.',                    region:'AEX',    isin:'NL0000009165' },
+  { ticker:'PHIA.AS',  name:'Philips N.V.',                     region:'AEX',    isin:'NL0000009538' },
+  // Switzerland
+  { ticker:'NESN.SW',  name:'Nestlé SA',                        region:'SIX',    isin:'CH0038863350' },
+  { ticker:'ROG.SW',   name:'Roche Holding AG',                 region:'SIX',    isin:'CH0012221716' },
+  { ticker:'NOVN.SW',  name:'Novartis AG',                      region:'SIX',    isin:'CH0012221716' },
+  // US — no suffix
+  { ticker:'AAPL',  name:'Apple Inc.',           region:'NASDAQ', isin:'US0378331005' },
+  { ticker:'MSFT',  name:'Microsoft Corp.',       region:'NASDAQ', isin:'US5949181045' },
+  { ticker:'NVDA',  name:'NVIDIA Corp.',          region:'NASDAQ', isin:'US67066G1040' },
+  { ticker:'AMZN',  name:'Amazon.com Inc.',       region:'NASDAQ', isin:'US0231351067' },
+  { ticker:'META',  name:'Meta Platforms Inc.',   region:'NASDAQ', isin:'US30303M1027' },
+  { ticker:'GOOGL', name:'Alphabet Inc.',         region:'NASDAQ', isin:'US02079K3059' },
+  { ticker:'TSLA',  name:'Tesla Inc.',            region:'NASDAQ', isin:'US88160R1014' },
+  { ticker:'JPM',   name:'JPMorgan Chase & Co.',  region:'NYSE',   isin:'US46625H1005' },
+  { ticker:'V',     name:'Visa Inc.',             region:'NYSE',   isin:'US92826C8394' },
+  { ticker:'JNJ',   name:'Johnson & Johnson',     region:'NYSE',   isin:'US4781601046' },
+  { ticker:'LMT',   name:'Lockheed Martin Corp.', region:'NYSE',   isin:'US5260571048' },
+  { ticker:'RTX',   name:'RTX Corporation',       region:'NYSE',   isin:'US7543121062' },
+];
+
+/* ISIN → ticker map (built from LOCAL_TICKER_DB + extras) */
+const ISIN_MAP = (() => {
+  const m = {};
+  LOCAL_TICKER_DB.forEach(t => { if (t.isin) m[t.isin] = t.ticker; });
+  return m;
+})();
+
+/* ── Shared CORS-proxy fetch (free, no API key, no account) ───────────────
+   Browsers block cross-origin calls to Yahoo Finance, so we race the request
+   through several free public CORS proxies in PARALLEL and take the first that
+   returns valid JSON. Parallel (not sequential) means one slow/blocked proxy
+   never holds up the others — the fastest reachable one wins in ~1-2s. */
+async function proxyFetchJson(targetUrl, { timeout = 9000 } = {}) {
+  const builders = [
+    u => [`https://corsproxy.io/?url=${encodeURIComponent(u)}`, false],
+    u => [`https://proxy.corsfix.com/?${u}`, false],
+    u => [`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, false],
+    u => [`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, true],
+    u => [`https://api.cors.lol/?url=${encodeURIComponent(u)}`, false],
+    u => [`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`, false],
+    u => [`https://thingproxy.freeboard.io/fetch/${u}`, false],
+  ];
+  const attempt = async (make) => {
+    const [purl, wrap] = make(targetUrl);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const res = await fetch(purl, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+      if (!res.ok) throw new Error('status ' + res.status);
+      let data;
+      if (wrap) { const w = await res.json(); data = typeof w.contents === 'string' ? JSON.parse(w.contents) : w.contents; }
+      else { data = await res.json(); }
+      if (!data) throw new Error('empty');
+      return data;
+    } finally { clearTimeout(to); }
+  };
+  try { return await Promise.any(builders.map(attempt)); }
+  catch { return null; }   // every proxy failed
+}
+
+/* Stock Research — live data from Yahoo Finance (free, no key) */
 class StockResearch {
   constructor() {
     this.priceChart    = null;
     this.peerChart     = null;
     this.currentTicker = null;
+    this._suggestTimer = null;
   }
 
   init() {
     const input = document.getElementById('stock-search');
     const btn   = document.getElementById('stock-search-btn');
-    btn.addEventListener('click', () => this.search(input.value.trim().toUpperCase()));
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') this.search(input.value.trim().toUpperCase()); });
-
+    btn.addEventListener('click',  () => this.search(input.value.trim()));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { this._closeSuggestions(); this.search(input.value.trim()); }
+      if (e.key === 'Escape') this._closeSuggestions();
+    });
+    input.addEventListener('input', () => {
+      clearTimeout(this._suggestTimer);
+      const q = input.value.trim();
+      if (q.length < 2) { this._closeSuggestions(); return; }
+      this._suggestTimer = setTimeout(() => this.showSuggestions(q), 280);
+    });
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.search-bar-hero')) this._closeSuggestions();
+    });
     // Restore saved API key
     const saved = localStorage.getItem('av_key');
     if (saved) document.getElementById('av-key-input').value = saved;
   }
 
+  _closeSuggestions() {
+    const box = document.getElementById('search-suggestions');
+    if (box) box.style.display = 'none';
+  }
+
+  async showSuggestions(query) {
+    const box = document.getElementById('search-suggestions');
+    if (!box) return;
+    const q = query.toLowerCase();
+
+    // 1. Local DB match (works offline)
+    let results = LOCAL_TICKER_DB.filter(t =>
+      t.ticker.toLowerCase().includes(q) ||
+      t.name.toLowerCase().includes(q) ||
+      (t.isin && t.isin.toLowerCase().includes(q))
+    ).slice(0, 6);
+
+    // 2. Alpha Vantage SYMBOL_SEARCH (with API key)
+    const key = this.getApiKey();
+    if (key && results.length < 4) {
+      try {
+        const res  = await fetch(`https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=${key}`);
+        const data = await res.json();
+        const seen = new Set(results.map(r => r.ticker));
+        for (const m of (data.bestMatches || []).slice(0, 6)) {
+          const t = m['1. symbol'];
+          if (!seen.has(t)) {
+            results.push({ ticker: t, name: m['2. name'], region: m['4. region'] });
+            seen.add(t);
+          }
+        }
+      } catch {}
+    }
+
+    if (!results.length) { box.style.display = 'none'; return; }
+    box.innerHTML = results.map(r => `
+      <div onclick="research.selectSuggestion('${esc(r.ticker)}')"
+           style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bg3)"
+           onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+        <span style="font-family:monospace;color:var(--accent-cyan);font-weight:600;min-width:90px;font-size:12px">${esc(r.ticker)}</span>
+        <span style="color:var(--text1);font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+        <span style="color:var(--text3);font-size:11px">${esc(r.region || '')}</span>
+      </div>`).join('');
+    box.style.display = 'block';
+  }
+
+  selectSuggestion(ticker) {
+    document.getElementById('stock-search').value = ticker;
+    this._closeSuggestions();
+    this.search(ticker);
+  }
+
   getApiKey() { return localStorage.getItem('av_key') || ''; }
 
-  async search(ticker) {
+  /* Resolve user input to a ticker: handles ISIN, common aliases, and direct tickers */
+  resolveToTicker(input) {
+    const s = input.trim().toUpperCase();
+    // ISIN pattern: 2 letters + 10 alphanumeric
+    if (/^[A-Z]{2}[A-Z0-9]{10}$/.test(s)) {
+      // Check ETF database first
+      const etf = typeof ETF_LIST !== 'undefined' && ETF_LIST.find(e => e.isin === s);
+      if (etf) return etf.ticker;
+      if (ISIN_MAP[s]) return ISIN_MAP[s];
+      showToast(`ISIN ${s} unbekannt — Ticker eingeben (z.B. EBS.VIE, OMV.VIE, AAPL)`, 'info');
+      return null;
+    }
+    return s;
+  }
+
+  /* ─── Yahoo Finance ticker mapping ─────────────────────── */
+  _toYahooTicker(avTicker) {
+    // Alpha Vantage uses .VIE for Vienna Stock Exchange; Yahoo Finance uses .VI
+    return avTicker.replace(/\.VIE$/, '.VI');
+  }
+
+  async _fetchYahooChart(yhTicker) {
+    const url  = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yhTicker)}?range=1y&interval=1d&includePrePost=false`;
+    const data = await proxyFetchJson(url);
+    return data?.chart?.result?.[0] || null;
+  }
+
+  renderYahooChart(result) {
+    const ctx = document.getElementById('res-price-chart')?.getContext('2d');
+    if (!ctx || !result) return;
+    if (this.priceChart) { this.priceChart.destroy(); this.priceChart = null; }
+
+    const meta   = result.meta || {};
+    const ts     = result.timestamp || [];
+    const closes = result.indicators?.adjclose?.[0]?.adjclose
+                || result.indicators?.quote?.[0]?.close || [];
+
+    const pairs  = ts.map((t, i) => [t, closes[i]]).filter(([, c]) => c != null && !isNaN(c));
+    if (!pairs.length) return;
+
+    const labels   = pairs.map(([t]) => new Date(t * 1000).toISOString().split('T')[0]);
+    const prices   = pairs.map(([, c]) => +c.toFixed(4));
+    const first    = prices[0];
+    const last     = prices[prices.length - 1];
+    const livePx   = meta.regularMarketPrice != null ? meta.regularMarketPrice : last;
+    const chgPct   = (last - first) / first * 100;
+    const positive = last >= first;
+    const ccy      = meta.currency === 'EUR' ? '€' : /GBP/i.test(meta.currency || '') ? '£' : '$';
+
+    setText('res-price', `${ccy}${livePx.toFixed(2)}`);
+    const el = document.getElementById('res-change');
+    el.textContent = `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}% (1J)`;
+    el.className   = `stock-change ${positive ? 'green' : 'red'}`;
+
+    const color = positive ? '#10c980' : '#ef4466';
+    this.priceChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ data: prices, borderColor: color,
+        backgroundColor: positive ? 'rgba(16,201,128,.08)' : 'rgba(239,68,102,.08)',
+        fill: true, tension: 0.2, pointRadius: 0, borderWidth: 1.5 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false },
+          tooltip: { backgroundColor: '#101828', borderColor: '#1a2840', borderWidth: 1,
+            callbacks: { label: c => ` ${ccy}${c.parsed.y.toFixed(2)}` } } },
+        scales: {
+          x: { ticks: { color: '#4a6080', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#1a2840' } },
+          y: { ticks: { color: '#8899b8', font: { size: 11 }, callback: v => ccy + v.toFixed(0) }, grid: { color: '#1a2840' } },
+        },
+      },
+    });
+  }
+
+  _estimateRatingDistrib(recKey, total) {
+    const dist = ({
+      strongBuy:  { strongBuy: 0.55, buy: 0.30, hold: 0.12, sell: 0.03, strongSell: 0.00 },
+      buy:        { strongBuy: 0.15, buy: 0.50, hold: 0.28, sell: 0.07, strongSell: 0.00 },
+      hold:       { strongBuy: 0.05, buy: 0.18, hold: 0.52, sell: 0.20, strongSell: 0.05 },
+      sell:       { strongBuy: 0.00, buy: 0.05, hold: 0.22, sell: 0.48, strongSell: 0.25 },
+      strongSell: { strongBuy: 0.00, buy: 0.08, hold: 0.12, sell: 0.30, strongSell: 0.50 },
+    })[recKey] || { strongBuy: 0.05, buy: 0.18, hold: 0.52, sell: 0.20, strongSell: 0.05 };
+    const r = k => Math.round(dist[k] * total);
+    return { strongBuy: r('strongBuy'), buy: r('buy'), hold: r('hold'), sell: r('sell'), strongSell: r('strongSell') };
+  }
+
+  /* Build the overview from Yahoo chart meta only (no API key needed).
+     Yahoo's fundamentals endpoint (quoteSummary) requires crumb auth that is
+     unavailable from the browser, so ratios/financials need an Alpha Vantage key.
+     We show the real, live values we DO have and mark the rest as unavailable —
+     never fabricated numbers. */
+  renderYahooOverview(avTicker, chartResult) {
+    const meta = chartResult?.meta || {};
+    const ccy  = meta.currency === 'EUR' ? '€' : /GBP/i.test(meta.currency || '') ? '£' : '$';
+    const cur  = meta.regularMarketPrice != null ? meta.regularMarketPrice : 0;
+    const hi52 = meta.fiftyTwoWeekHigh, lo52 = meta.fiftyTwoWeekLow;
+    const NA   = '—';
+    const fp   = v => v != null && !isNaN(v) ? `${ccy}${(+v).toFixed(2)}` : NA;
+
+    // Exchange label — map Yahoo exchange codes to friendly names
+    const exchMap = { NMS:'NASDAQ', NGM:'NASDAQ', NCM:'NASDAQ', NYQ:'NYSE', PCX:'NYSE Arca',
+                      VIE:'Wien (Wiener Börse)', GER:'XETRA', FRA:'Frankfurt', STU:'Stuttgart',
+                      EBS:'SIX Swiss', AMS:'Euronext Amsterdam', PAR:'Euronext Paris', MIL:'Borsa Italiana',
+                      LSE:'London', MCE:'BME Madrid' };
+    const exch = exchMap[meta.exchangeName] || meta.fullExchangeName || meta.exchangeName || '';
+
+    setText('res-name',     meta.longName || meta.shortName || avTicker);
+    setText('res-ticker',   this._toYahooTicker(avTicker));
+    setText('res-exchange', exch ? `${exch} · 📡 Yahoo Finance` : '📡 Yahoo Finance');
+    setText('res-sector',   '');
+    setText('res-industry', '');
+    document.getElementById('stock-avatar').textContent = avTicker.substring(0, 2).toUpperCase();
+    setText('res-mktcap', '');
+
+    // Valuation — not derivable from the chart feed
+    document.getElementById('valuation-grid').innerHTML =
+      ['P/E (TTM)','P/E (Forward)','P/B','P/S','EV/EBITDA','EV/Revenue','PEG','Div Yield']
+        .map(l => `<div class="metric-item"><div class="metric-label">${l}</div><div class="metric-value">${NA}</div></div>`).join('');
+
+    // Analyst — honest note (no fabricated ratings)
+    document.getElementById('analyst-block').innerHTML =
+      `<div style="color:var(--text3);font-size:12px;padding:10px 0;line-height:1.6">
+         Analystendaten & Fundamentalkennzahlen benötigen einen kostenlosen
+         <strong style="color:var(--text2)">Alpha-Vantage-Key</strong> (Einstellungen → 🔑).<br>
+         <span style="color:var(--accent-cyan)">Preis, Chart und 52-Wochen-Spanne sind live.</span>
+       </div>`;
+
+    // Price targets — real 52W range + current price (no analyst target without a key)
+    this.renderPriceTargets({ low: lo52 || 0, high: hi52 || 0, target: 0, current: cur, ccy });
+
+    // Financials — only the live values the chart feed provides
+    const vol = meta.regularMarketVolume;
+    document.getElementById('financials-grid').innerHTML = [
+      { label: 'Letzter Kurs',     val: fp(cur) },
+      { label: '52W High',         val: fp(hi52) },
+      { label: '52W Low',          val: fp(lo52) },
+      { label: 'Tages-Hoch',       val: fp(meta.regularMarketDayHigh) },
+      { label: 'Tages-Tief',       val: fp(meta.regularMarketDayLow) },
+      { label: 'Volumen',          val: vol != null ? (+vol).toLocaleString('de') : NA },
+      { label: 'Währung',          val: meta.currency || NA },
+      { label: 'Revenue (TTM)',    val: NA },
+      { label: 'EBITDA',           val: NA },
+      { label: 'Net Income (TTM)', val: NA },
+      { label: 'EPS (Diluted)',    val: NA },
+      { label: 'ROE',              val: NA },
+      { label: 'Beta',             val: NA },
+    ].map(f => `<div class="metric-card-large"><div class="label">${f.label}</div><div class="value">${f.val}</div></div>`).join('');
+
+    // Peer comparison — sector peers only (current stock ratios unknown without a key)
+    const cleanT = this._toYahooTicker(avTicker).replace(/\.(VI|DE|SW|AS|PA|MI|LS|BE|HK|KS|TW|L)$/, '');
+    this.renderPeerChart(cleanT, 'Technology', 0, 0);
+  }
+
+  async search(input) {
+    if (!input) return;
+    const ticker = this.resolveToTicker(input);
     if (!ticker) return;
     this.currentTicker = ticker;
     document.getElementById('research-empty').classList.add('hidden');
     document.getElementById('research-content').classList.remove('hidden');
 
-    // Show loading state
-    setText('res-name', ticker);
-    document.getElementById('stock-avatar').textContent = ticker.substring(0,2);
+    // Loading state — never show fabricated numbers
+    this._setLoading(ticker);
 
-    const key = this.getApiKey();
-    if (key) {
-      await Promise.all([this.fetchOverview(ticker, key), this.fetchTimeSeries(ticker, key)]);
+    const key      = this.getApiKey();
+    const yhTicker = this._toYahooTicker(ticker);
+
+    // Real price + chart from Yahoo (via free CORS proxy) — no key, all exchanges
+    const chartResult = await this._fetchYahooChart(yhTicker);
+
+    if (chartResult) {
+      this.renderYahooChart(chartResult);
+      // Real baseline from the chart feed (price, chart, 52W). If an optional AV
+      // key is present, enrich with fundamentals; failure leaves the baseline intact.
+      this.renderYahooOverview(ticker, chartResult);
+      if (key) this.fetchOverview(ticker, key, /* skipPrice */ true);
+    } else if (key) {
+      // Yahoo proxy unreachable → optional Alpha Vantage fallback
+      const ok = await this.fetchOverview(ticker, key);
+      if (ok) await this.fetchTimeSeries(ticker, key);
+      else this.renderNoData(ticker);
     } else {
-      this.renderMockData(ticker);
+      // No live data and no key → honest message, never demo numbers
+      this.renderNoData(ticker);
     }
+
+    // Insider transactions only via Alpha Vantage (SEC data, optional)
+    if (key) this.fetchInsiderTransactions(ticker, key);
+    else this.renderInsiders([]);
   }
 
-  async fetchOverview(ticker, key) {
+  /* Loading placeholder — clears panels so stale/old data is never visible */
+  _setLoading(ticker) {
+    setText('res-name', ticker);
+    setText('res-ticker', this._toYahooTicker(ticker));
+    setText('res-exchange', 'lädt Live-Daten …');
+    setText('res-sector', ''); setText('res-industry', ''); setText('res-mktcap', '');
+    setText('res-price', '…');
+    const chg = document.getElementById('res-change');
+    if (chg) { chg.textContent = ''; chg.className = 'stock-change'; }
+    document.getElementById('stock-avatar').textContent = ticker.substring(0, 2).toUpperCase();
+    const spinner = '<div style="grid-column:1/-1;color:var(--text3);font-size:13px;padding:14px">⏳ lädt …</div>';
+    document.getElementById('valuation-grid').innerHTML = spinner;
+    document.getElementById('financials-grid').innerHTML = '';
+    document.getElementById('analyst-block').innerHTML = '';
+    document.getElementById('price-target-block').innerHTML = '';
+  }
+
+  /* Honest empty state when no free data source is reachable (no demo numbers) */
+  renderNoData(ticker) {
+    setText('res-name', ticker);
+    setText('res-ticker', this._toYahooTicker(ticker));
+    setText('res-exchange', '⚠ Keine Live-Daten erreichbar');
+    setText('res-sector', ''); setText('res-industry', ''); setText('res-mktcap', '');
+    setText('res-price', '—');
+    const chg = document.getElementById('res-change');
+    if (chg) { chg.textContent = ''; chg.className = 'stock-change'; }
+    const isFile = location.protocol === 'file:';
+    const hint = isFile
+      ? `<br><br><strong style="color:var(--yellow)">⚠ Du hast die Datei lokal geöffnet (file://).</strong>
+         Die freien Daten-Proxys lehnen „file://" ab. Öffne die App über die Online-Version
+         <a href="https://mattstad.github.io/DepotAnalyzer/" target="_blank" style="color:var(--accent-cyan)">mattstad.github.io/DepotAnalyzer</a>
+         oder starte einen lokalen Server (z.B. <code>python -m http.server</code>) — dann laden die Live-Daten.`
+      : `<br>Bitte in ein paar Sekunden erneut auf <strong>Analyze</strong> klicken.`;
+    const msg = `<div style="grid-column:1/-1;color:var(--text3);font-size:13px;padding:16px;line-height:1.7">
+        Es konnten keine Live-Daten geladen werden — die freien Daten-Proxys sind
+        gerade nicht erreichbar.${hint}
+        <br><span style="color:var(--text2)">Keine Demo-Werte, kein API-Key nötig.</span>
+      </div>`;
+    document.getElementById('valuation-grid').innerHTML = msg;
+    document.getElementById('financials-grid').innerHTML = '';
+    document.getElementById('analyst-block').innerHTML = '';
+    document.getElementById('price-target-block').innerHTML = '';
+    if (this.priceChart) { this.priceChart.destroy(); this.priceChart = null; }
+    if (this.peerChart)  { this.peerChart.destroy();  this.peerChart  = null; }
+    showToast('Keine Live-Daten erreichbar – bitte gleich erneut versuchen', 'error');
+  }
+
+  async fetchInsiderTransactions(ticker, key) {
+    this.renderInsiders(null); // show loading state
+    try {
+      const url  = `https://www.alphavantage.co/query?function=INSIDER_TRANSACTIONS&symbol=${ticker}&apikey=${key}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      const rows = data?.data;
+      if (Array.isArray(rows)) {
+        this.renderInsiders(rows);
+        return;
+      }
+    } catch {}
+    this.renderInsiders([]); // API error or no data → show empty
+  }
+
+  renderInsiders(rows) {
+    const tbody = document.getElementById('insider-tbody');
+    if (!tbody) return;
+    if (rows === null) {
+      // Loading state
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:18px">Lade Insider-Daten…</td></tr>`;
+      return;
+    }
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:18px">Keine Insider-Aktivität verfügbar</td></tr>`;
+      return;
+    }
+    // Alpha Vantage field names: transaction_date, executive, executive_title,
+    // acquisition_or_disposal ("A"=Buy, "D"=Sell/Dispose), shares, share_price, security_type
+    tbody.innerHTML = rows.slice(0, 30).map(i => {
+      const isBuy = (i.acquisition_or_disposal || '').toUpperCase() === 'A';
+      const shares = parseInt(i.shares) || 0;
+      const price  = parseFloat(i.share_price) || 0;
+      const total  = shares * price;
+      return `<tr>
+        <td>${i.transaction_date || '—'}</td>
+        <td class="name-cell">${esc(i.executive || '—')}</td>
+        <td style="color:var(--text2)">${esc(i.executive_title || '—')}</td>
+        <td><span class="${isBuy ? 'tx-buy' : 'tx-sell'}">${isBuy ? 'Buy' : 'Sell'}</span></td>
+        <td class="num">${shares ? shares.toLocaleString() : '—'}</td>
+        <td class="num">${price ? '$' + price.toFixed(2) : '—'}</td>
+        <td class="num">${total ? '$' + total.toLocaleString('en', {maximumFractionDigits:0}) : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async fetchOverview(ticker, key, skipPrice = false) {
     try {
       const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${key}`;
       const res  = await fetch(url);
       const data = await res.json();
-      if (data.Symbol) { this.renderOverview(data); return; }
+      if (data.Symbol) { this.renderOverview(data, skipPrice); return true; }
     } catch {}
-    this.renderMockData(ticker);
+    return false;   // caller decides what to show (never demo numbers)
   }
 
   async fetchTimeSeries(ticker, key) {
@@ -57,7 +477,8 @@ class StockResearch {
     } catch {}
   }
 
-  renderOverview(d) {
+  renderOverview(d, skipPrice = false) {
+    const ccy = d.Currency === 'EUR' ? '€' : /^GB/.test(d.Currency || '') ? '£' : '$';
     setText('res-name', d.Name || d.Symbol);
     setText('res-ticker', d.Symbol);
     setText('res-exchange', d.Exchange || '');
@@ -65,10 +486,12 @@ class StockResearch {
     setText('res-industry', d.Industry || '');
     document.getElementById('stock-avatar').textContent = (d.Symbol||'').substring(0,2);
 
-    const price  = parseFloat(d['50DayMovingAverage']) || 0;
-    const target = parseFloat(d.AnalystTargetPrice) || 0;
-    setText('res-price', price ? `$${parseFloat(d['52WeekHigh']).toFixed(2)}` : '—');
-    setText('res-mktcap', d.MarketCapitalization ? `Market Cap: ${fmtLargeNum(d.MarketCapitalization)}` : '');
+    // Only set the headline price if the Yahoo chart didn't already (AV has no live quote)
+    if (!skipPrice) {
+      const price = parseFloat(d['50DayMovingAverage']) || 0;
+      setText('res-price', price ? `${ccy}${parseFloat(d['52WeekHigh']).toFixed(2)}` : '—');
+    }
+    setText('res-mktcap', d.MarketCapitalization ? `Market Cap: ${fmtLargeNumCcy(d.MarketCapitalization, ccy)}` : '');
 
     // Valuation
     const metrics = [
@@ -96,36 +519,40 @@ class StockResearch {
       strongSell:parseInt(d.AnalystRatingStrongSell)||0,
     });
 
-    // Price targets
+    // Price targets — keep the live Yahoo price as "current" when available
+    const curForTarget = skipPrice
+      ? (parseFloat(document.getElementById('res-price')?.textContent?.replace(/[^0-9.]/g,'')) || parseFloat(d['50DayMovingAverage']) || 0)
+      : (parseFloat(d['50DayMovingAverage']) || 0);
     this.renderPriceTargets({
       low:     parseFloat(d['52WeekLow']),
       high:    parseFloat(d['52WeekHigh']),
       target:  parseFloat(d.AnalystTargetPrice) || 0,
-      current: parseFloat(d['50DayMovingAverage']) || 0
+      current: curForTarget,
+      ccy,
     });
 
     // Financials
     const fins = [
-      { label:'Revenue (TTM)',     val: fmtLargeNum(d.RevenueTTM) },
-      { label:'Gross Profit',      val: fmtLargeNum(d.GrossProfitTTM) },
-      { label:'EBITDA',            val: fmtLargeNum(d.EBITDA) },
-      { label:'Net Income (TTM)',  val: fmtLargeNum(d.NetIncomeTTM) },
-      { label:'EPS (Diluted)',     val: `$${parseFloat(d.DilutedEPSTTM||0).toFixed(2)}` },
+      { label:'Revenue (TTM)',     val: fmtLargeNumCcy(d.RevenueTTM, ccy) },
+      { label:'Gross Profit',      val: fmtLargeNumCcy(d.GrossProfitTTM, ccy) },
+      { label:'EBITDA',            val: fmtLargeNumCcy(d.EBITDA, ccy) },
+      { label:'Net Income (TTM)',  val: fmtLargeNumCcy(d.NetIncomeTTM, ccy) },
+      { label:'EPS (Diluted)',     val: `${ccy}${parseFloat(d.DilutedEPSTTM||0).toFixed(2)}` },
       { label:'ROE',               val: d.ReturnOnEquityTTM ? (parseFloat(d.ReturnOnEquityTTM)*100).toFixed(1)+'%' : '—' },
       { label:'ROA',               val: d.ReturnOnAssetsTTM ? (parseFloat(d.ReturnOnAssetsTTM)*100).toFixed(1)+'%' : '—' },
       { label:'Profit Margin',     val: d.ProfitMargin ? (parseFloat(d.ProfitMargin)*100).toFixed(1)+'%' : '—' },
       { label:'Debt/Equity',       val: fmtMetric(d.DebtToEquityRatio) },
       { label:'Current Ratio',     val: fmtMetric(d.CurrentRatio) },
       { label:'Beta',              val: fmtMetric(d.Beta) },
-      { label:'52W High',          val: `$${parseFloat(d['52WeekHigh']||0).toFixed(2)}` },
-      { label:'52W Low',           val: `$${parseFloat(d['52WeekLow']||0).toFixed(2)}` },
-      { label:'Shares Outstanding',val: fmtLargeNum(d.SharesOutstanding) },
+      { label:'52W High',          val: `${ccy}${parseFloat(d['52WeekHigh']||0).toFixed(2)}` },
+      { label:'52W Low',           val: `${ccy}${parseFloat(d['52WeekLow']||0).toFixed(2)}` },
+      { label:'Shares Outstanding',val: fmtLargeNumCcy(d.SharesOutstanding, ccy) },
     ];
     document.getElementById('financials-grid').innerHTML = fins.map(f =>
       `<div class="metric-card-large"><div class="label">${f.label}</div><div class="value">${f.val||'—'}</div></div>`
     ).join('');
 
-    this.renderMockInsiders(d.Symbol);
+    // Insider transactions are fetched separately via fetchInsiderTransactions()
     this.renderPeerChart(d.Symbol, d.Sector, parseFloat(d.PERatio)||0, parseFloat(d.PriceToBookRatio)||0);
   }
 
@@ -135,7 +562,8 @@ class StockResearch {
 
     const entries = Object.entries(ts).sort(([a],[b]) => a < b ? -1 : 1).slice(-252);
     const labels  = entries.map(([d]) => d);
-    const closes  = entries.map(([,v]) => parseFloat(v['4. close']));
+    // Use adjusted close to avoid split/dividend artifacts; fallback to raw close
+    const closes  = entries.map(([,v]) => parseFloat(v['5. adjusted close'] || v['4. close']));
     const last    = closes[closes.length - 1];
     const first   = closes[0];
     const positive = last >= first;
@@ -193,23 +621,23 @@ class StockResearch {
       </div>`;
   }
 
-  renderPriceTargets({ low, high, target, current }) {
+  renderPriceTargets({ low, high, target, current, ccy = '$' }) {
     if (!low || !high) { document.getElementById('price-target-block').innerHTML = '<p style="color:var(--text3)">No data</p>'; return; }
-    const range = high - low || 1;
-    const curPct = ((current - low) / range * 100).toFixed(1);
-    const tgtPct = ((target  - low) / range * 100).toFixed(1);
-    const upside = current ? ((target - current) / current * 100).toFixed(1) : null;
+    const range  = high - low || 1;
+    const curPct = Math.max(0, Math.min(100, ((current - low) / range * 100))).toFixed(1);
+    const tgtPct = Math.max(0, Math.min(100, ((target  - low) / range * 100))).toFixed(1);
+    const hasTarget = target > 0;
+    const upside = hasTarget && current ? ((target - current) / current * 100).toFixed(1) : null;
 
     document.getElementById('price-target-block').innerHTML = `
       <div class="pt-block">
-        <div class="pt-line"><span class="pt-label">Current Price</span><span class="pt-val">$${current.toFixed(2)}</span></div>
-        <div class="pt-line"><span class="pt-label">Analyst Target</span><span class="pt-val ${upside>=0?'green':'red'}">$${target.toFixed(2)} ${upside!=null?`(${upside>=0?'+':''}${upside}%)`:''}` +
-          `</span></div>
-        <div class="pt-line"><span class="pt-label">52W Range</span><span class="pt-val">$${low.toFixed(2)} – $${high.toFixed(2)}</span></div>
+        <div class="pt-line"><span class="pt-label">Current Price</span><span class="pt-val">${ccy}${current.toFixed(2)}</span></div>
+        ${hasTarget ? `<div class="pt-line"><span class="pt-label">Analyst Target</span><span class="pt-val ${upside>=0?'green':'red'}">${ccy}${target.toFixed(2)} ${upside!=null?`(${upside>=0?'+':''}${upside}%)`:''}</span></div>` : ''}
+        <div class="pt-line"><span class="pt-label">52W Range</span><span class="pt-val">${ccy}${low.toFixed(2)} – ${ccy}${high.toFixed(2)}</span></div>
         <div class="pt-range-bar">
           <div class="pt-range-fill" style="left:0;width:100%"></div>
           <div class="pt-current-line" style="left:${curPct}%"></div>
-          ${target ? `<div class="pt-target-dot" style="left:${tgtPct}%"></div>` : ''}
+          ${hasTarget ? `<div class="pt-target-dot" style="left:${tgtPct}%"></div>` : ''}
         </div>
         <div class="pt-line"><span class="pt-label" style="font-size:10px">▏ 52W Low</span><span class="pt-val" style="font-size:10px">52W High ▕</span></div>
       </div>`;
@@ -247,195 +675,20 @@ class StockResearch {
     });
   }
 
-  renderMockInsiders(ticker) {
-    const insiders = MOCK_INSIDERS[ticker] || generateMockInsiders(ticker);
-    document.getElementById('insider-tbody').innerHTML = insiders.map(i => `<tr>
-      <td>${i.date}</td>
-      <td class="name-cell">${esc(i.name)}</td>
-      <td style="color:var(--text2)">${esc(i.title)}</td>
-      <td><span class="${i.type==='Buy'?'tx-buy':'tx-sell'}">${i.type}</span></td>
-      <td class="num">${i.shares.toLocaleString()}</td>
-      <td class="num">$${i.price.toFixed(2)}</td>
-      <td class="num">$${(i.shares * i.price).toLocaleString('en',{maximumFractionDigits:0})}</td>
-    </tr>`).join('');
-  }
-
-  renderMockData(ticker) {
-    const mock = MOCK_STOCKS[ticker] || generateMockStock(ticker);
-    setText('res-name',     mock.name);
-    setText('res-ticker',   ticker);
-    setText('res-exchange', mock.exchange);
-    setText('res-sector',   mock.sector);
-    setText('res-industry', mock.industry);
-    document.getElementById('stock-avatar').textContent = ticker.substring(0,2);
-    setText('res-price',    `$${mock.price.toFixed(2)}`);
-    const el = document.getElementById('res-change');
-    el.textContent = `${mock.changePct >= 0 ? '+' : ''}${mock.changePct.toFixed(2)}% (1Y)`;
-    el.className = `stock-change ${mock.changePct >= 0 ? 'green' : 'red'}`;
-    setText('res-mktcap', `Market Cap: ${mock.mktcap}`);
-
-    document.getElementById('valuation-grid').innerHTML = mock.valuation.map(m =>
-      `<div class="metric-item"><div class="metric-label">${m.label}</div><div class="metric-value">${m.val}</div></div>`
-    ).join('');
-
-    this.renderAnalystRatings(mock.ratings);
-    this.renderPriceTargets(mock.priceTarget);
-    this.renderMockPriceChart(mock);
-    this.renderPeerChart(ticker, mock.sector, mock.pe, mock.pb);
-    this.renderMockInsiders(ticker);
-
-    document.getElementById('financials-grid').innerHTML = mock.financials.map(f =>
-      `<div class="metric-card-large"><div class="label">${f.label}</div><div class="value">${f.val}</div></div>`
-    ).join('');
-
-    if (!this.getApiKey()) {
-      showToast('Add an Alpha Vantage API key in Settings for live data', 'info');
-    }
-  }
-
-  renderMockPriceChart(mock) {
-    const ctx = document.getElementById('res-price-chart').getContext('2d');
-    if (this.priceChart) this.priceChart.destroy();
-
-    const n = 252;
-    const prices = [mock.price * 0.75];
-    const mu = mock.changePct / 100 / n;
-    const sigma = 0.018;
-    for (let i = 1; i < n; i++) {
-      const r = (Math.random() - 0.5) * sigma + mu;
-      prices.push(prices[i-1] * (1 + r));
-    }
-    prices[prices.length - 1] = mock.price;
-
-    const today = new Date();
-    const labels = Array.from({length: n}, (_,i) => {
-      const d = new Date(today); d.setDate(d.getDate() - (n - i));
-      return d.toISOString().split('T')[0];
-    });
-
-    const color = mock.changePct >= 0 ? '#10c980' : '#ef4466';
-    this.priceChart = new Chart(ctx, {
-      type: 'line',
-      data: { labels, datasets: [{ data: prices, borderColor: color,
-        backgroundColor: mock.changePct >= 0 ? 'rgba(16,201,128,.08)' : 'rgba(239,68,102,.08)',
-        fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5 }]},
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false },
-          tooltip: { backgroundColor: '#101828', borderColor: '#1a2840', borderWidth: 1,
-            callbacks: { label: c => ` $${c.parsed.y.toFixed(2)}` }}},
-        scales: {
-          x: { ticks: { color: '#4a6080', maxTicksLimit: 8, font:{size:10} }, grid: { color: '#1a2840' } },
-          y: { ticks: { color: '#8899b8', font:{size:11}, callback: v => '$'+v.toFixed(0) }, grid: { color: '#1a2840' } }
-        }
-      }
-    });
-  }
 }
 
-/* ── Mock data ── */
-const MOCK_STOCKS = {
-  AAPL: { name:'Apple Inc.', exchange:'NASDAQ', sector:'Technology', industry:'Consumer Electronics', price:189.30, changePct:18.4, mktcap:'$2.9T', pe:28.4, pb:47.2,
-    valuation:[{label:'P/E (TTM)',val:'28.4x'},{label:'P/E Fwd',val:'26.1x'},{label:'P/B',val:'47.2x'},{label:'P/S',val:'7.4x'},{label:'EV/EBITDA',val:'21.8x'},{label:'PEG',val:'2.3x'},{label:'Div Yield',val:'0.55%'},{label:'Beta',val:'1.28'}],
-    ratings:{strongBuy:18,buy:12,hold:8,sell:2,strongSell:0},
-    priceTarget:{low:155,high:250,target:218,current:189.3},
-    financials:[{label:'Revenue',val:'$385.6B'},{label:'Gross Profit',val:'$169.1B'},{label:'Net Income',val:'$96.0B'},{label:'EPS Diluted',val:'$6.16'},{label:'ROE',val:'147.3%'},{label:'Profit Margin',val:'24.9%'},{label:'Debt/Equity',val:'1.52'},{label:'Free Cash Flow',val:'$92.1B'}]},
-  MSFT: { name:'Microsoft Corp.', exchange:'NASDAQ', sector:'Technology', industry:'Software', price:415.60, changePct:22.8, mktcap:'$3.1T', pe:35.2, pb:13.8,
-    valuation:[{label:'P/E (TTM)',val:'35.2x'},{label:'P/E Fwd',val:'29.8x'},{label:'P/B',val:'13.8x'},{label:'P/S',val:'13.2x'},{label:'EV/EBITDA',val:'26.4x'},{label:'PEG',val:'2.1x'},{label:'Div Yield',val:'0.72%'},{label:'Beta',val:'0.91'}],
-    ratings:{strongBuy:25,buy:15,hold:4,sell:1,strongSell:0},
-    priceTarget:{low:340,high:510,target:475,current:415.6},
-    financials:[{label:'Revenue',val:'$232.6B'},{label:'Gross Profit',val:'$162.4B'},{label:'Net Income',val:'$88.1B'},{label:'EPS Diluted',val:'$11.80'},{label:'ROE',val:'36.8%'},{label:'Profit Margin',val:'36.4%'},{label:'Debt/Equity',val:'0.38'},{label:'Free Cash Flow',val:'$70.9B'}]},
-  NVDA: { name:'NVIDIA Corporation', exchange:'NASDAQ', sector:'Technology', industry:'Semiconductors', price:875.40, changePct:184.2, mktcap:'$2.15T', pe:72.1, pb:47.8,
-    valuation:[{label:'P/E (TTM)',val:'72.1x'},{label:'P/E Fwd',val:'38.4x'},{label:'P/B',val:'47.8x'},{label:'P/S',val:'24.8x'},{label:'EV/EBITDA',val:'58.2x'},{label:'PEG',val:'1.2x'},{label:'Div Yield',val:'0.04%'},{label:'Beta',val:'1.68'}],
-    ratings:{strongBuy:32,buy:8,hold:4,sell:0,strongSell:0},
-    priceTarget:{low:450,high:1200,target:1050,current:875.4},
-    financials:[{label:'Revenue',val:'$79.8B'},{label:'Gross Profit',val:'$62.8B'},{label:'Net Income',val:'$29.6B'},{label:'EPS Diluted',val:'$11.93'},{label:'ROE',val:'91.4%'},{label:'Profit Margin',val:'55.1%'},{label:'Debt/Equity',val:'0.42'},{label:'Free Cash Flow',val:'$27.0B'}]},
-  SAP: { name:'SAP SE', exchange:'XETRA', sector:'Technology', industry:'Enterprise Software', price:194.80, changePct:44.2, mktcap:'€238B', pe:42.1, pb:6.8,
-    valuation:[{label:'P/E (TTM)',val:'42.1x'},{label:'P/E Fwd',val:'32.8x'},{label:'P/B',val:'6.8x'},{label:'P/S',val:'8.4x'},{label:'EV/EBITDA',val:'32.1x'},{label:'PEG',val:'1.8x'},{label:'Div Yield',val:'0.91%'},{label:'Beta',val:'0.82'}],
-    ratings:{strongBuy:12,buy:18,hold:6,sell:2,strongSell:0},
-    priceTarget:{low:145,high:230,target:212,current:194.8},
-    financials:[{label:'Revenue',val:'€34.3B'},{label:'Cloud Revenue',val:'€17.1B'},{label:'Net Income',val:'€3.3B'},{label:'EPS Diluted',val:'€2.85'},{label:'ROE',val:'16.2%'},{label:'Profit Margin',val:'9.6%'},{label:'Debt/Equity',val:'0.28'},{label:'Employees',val:'107,000'}]},
-  ASML: { name:'ASML Holding N.V.', exchange:'NASDAQ/AMS', sector:'Technology', industry:'Semiconductor Equipment', price:842.30, changePct:14.8, mktcap:'€330B', pe:38.4, pb:24.1,
-    valuation:[{label:'P/E (TTM)',val:'38.4x'},{label:'P/E Fwd',val:'28.1x'},{label:'P/B',val:'24.1x'},{label:'P/S',val:'10.2x'},{label:'EV/EBITDA',val:'31.8x'},{label:'PEG',val:'1.4x'},{label:'Div Yield',val:'0.88%'},{label:'Beta',val:'1.32'}],
-    ratings:{strongBuy:18,buy:10,hold:5,sell:1,strongSell:0},
-    priceTarget:{low:620,high:1050,target:960,current:842.3},
-    financials:[{label:'Revenue',val:'€27.6B'},{label:'Gross Profit',val:'€14.3B'},{label:'Net Income',val:'€7.8B'},{label:'EPS Diluted',val:'€20.12'},{label:'ROE',val:'72.4%'},{label:'Profit Margin',val:'28.2%'},{label:'Backlog',val:'€39.0B'},{label:'Employees',val:'42,000'}]}
-};
+/* ── Mock-Daten entfernt: die App zeigt ausschließlich echte Live-Daten ── */
 
 const SECTOR_PEERS = {
-  'Technology': [
-    {ticker:'MSFT',pe:35.2,pb:13.8},{ticker:'GOOGL',pe:23.1,pb:7.2},{ticker:'META',pe:24.8,pb:9.1},{ticker:'AVGO',pe:31.2,pb:14.8}
-  ],
-  'Healthcare': [
-    {ticker:'JNJ',pe:14.8,pb:5.2},{ticker:'LLY',pe:58.4,pb:22.1},{ticker:'ABBV',pe:28.1,pb:38.4},{ticker:'MRK',pe:16.2,pb:6.8}
-  ],
-  'Financials': [
-    {ticker:'JPM',pe:11.2,pb:1.8},{ticker:'BAC',pe:10.8,pb:1.4},{ticker:'GS',pe:12.1,pb:1.6},{ticker:'MS',pe:14.8,pb:2.1}
-  ],
-  'Consumer Disc': [
-    {ticker:'AMZN',pe:48.2,pb:8.4},{ticker:'TSLA',pe:62.1,pb:12.8},{ticker:'HD',pe:22.4,pb:58.1},{ticker:'MCD',pe:24.8,pb:48.2}
-  ],
-  'Energy': [
-    {ticker:'CVX',pe:13.2,pb:1.8},{ticker:'BP',pe:8.4,pb:1.2},{ticker:'SLB',pe:18.1,pb:3.8},{ticker:'EOG',pe:11.4,pb:2.4}
-  ]
+  'Technology':    [ {ticker:'MSFT',pe:35.2,pb:13.8},{ticker:'GOOGL',pe:23.1,pb:7.2},{ticker:'META',pe:24.8,pb:9.1},{ticker:'AVGO',pe:31.2,pb:14.8} ],
+  'Healthcare':    [ {ticker:'JNJ',pe:14.8,pb:5.2},{ticker:'LLY',pe:58.4,pb:22.1},{ticker:'ABBV',pe:28.1,pb:38.4},{ticker:'MRK',pe:16.2,pb:6.8} ],
+  'Financials':    [ {ticker:'JPM',pe:11.2,pb:1.8},{ticker:'EBS.VIE',pe:7.8,pb:0.9},{ticker:'DBK.DE',pe:8.4,pb:0.6},{ticker:'BNP.PA',pe:7.2,pb:0.7} ],
+  'Consumer Disc': [ {ticker:'AMZN',pe:48.2,pb:8.4},{ticker:'TSLA',pe:62.1,pb:12.8},{ticker:'HD',pe:22.4,pb:58.1},{ticker:'MCD',pe:24.8,pb:48.2} ],
+  'Energy':        [ {ticker:'OMV.VIE',pe:8.4,pb:0.7},{ticker:'CVX',pe:13.2,pb:1.8},{ticker:'BP',pe:8.4,pb:1.2},{ticker:'SLB',pe:18.1,pb:3.8} ],
+  'Materials':     [ {ticker:'VOE.VIE',pe:10.2,pb:0.6},{ticker:'BAS.DE',pe:14.8,pb:1.2},{ticker:'NUE',pe:12.4,pb:1.8},{ticker:'VALE3.SA',pe:8.2,pb:1.4} ],
+  'Industrials':   [ {ticker:'ANDR.VIE',pe:18.4,pb:3.8},{ticker:'SIE.DE',pe:19.2,pb:3.4},{ticker:'HON',pe:22.4,pb:7.8},{ticker:'GE',pe:28.4,pb:5.8} ],
+  'Utilities':     [ {ticker:'VER.VIE',pe:22.4,pb:4.2},{ticker:'RWE.DE',pe:14.8,pb:1.2},{ticker:'NEE',pe:21.4,pb:2.8},{ticker:'ENEL.MI',pe:12.4,pb:1.4} ],
 };
-
-const MOCK_INSIDERS = {
-  AAPL: [
-    {date:'2025-05-12',name:'Tim Cook',title:'CEO',type:'Sell',shares:120000,price:186.40},
-    {date:'2025-04-28',name:'Luca Maestri',title:'CFO',type:'Sell',shares:80000,price:172.80},
-    {date:'2025-03-15',name:'Jeff Williams',title:'COO',type:'Sell',shares:65000,price:168.20},
-    {date:'2025-02-08',name:'Board Director',title:'Director',type:'Buy',shares:5000,price:185.60},
-  ],
-  NVDA: [
-    {date:'2025-05-20',name:'Jensen Huang',title:'CEO & Co-Founder',type:'Sell',shares:600000,price:862.10},
-    {date:'2025-04-15',name:'Colette Kress',title:'CFO',type:'Sell',shares:200000,price:798.40},
-    {date:'2025-03-10',name:'Board Member',title:'Director',type:'Buy',shares:10000,price:820.50},
-  ]
-};
-
-function generateMockInsiders(ticker) {
-  const names = ['John Smith','Sarah Johnson','Michael Brown','Emily Davis','Robert Wilson'];
-  const titles = ['CEO','CFO','COO','Director','SVP Finance'];
-  const insiders = [];
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(); d.setDate(d.getDate() - Math.floor(Math.random()*90));
-    const isBuy = Math.random() > 0.6;
-    insiders.push({ date: d.toISOString().split('T')[0], name: names[i%names.length], title: titles[i%titles.length],
-      type: isBuy ? 'Buy' : 'Sell', shares: Math.floor(Math.random()*50000+1000),
-      price: 50 + Math.random()*400 });
-  }
-  return insiders.sort((a,b) => b.date.localeCompare(a.date));
-}
-
-function generateMockStock(ticker) {
-  const price = 50 + Math.random()*500;
-  return {
-    name: ticker + ' Corp.', exchange: 'NYSE', sector: 'Technology', industry: 'Software', price,
-    changePct: -20 + Math.random()*60, mktcap: fmtLargeNum(price * 1e9 * (1 + Math.random()*50)),
-    pe: 15 + Math.random()*45, pb: 2 + Math.random()*15,
-    valuation: [
-      {label:'P/E (TTM)',  val:(15+Math.random()*45).toFixed(1)+'x'},
-      {label:'P/B',        val:(2+Math.random()*15).toFixed(1)+'x'},
-      {label:'P/S',        val:(2+Math.random()*12).toFixed(1)+'x'},
-      {label:'EV/EBITDA',  val:(10+Math.random()*30).toFixed(1)+'x'},
-      {label:'Div Yield',  val:(Math.random()*3).toFixed(2)+'%'},
-      {label:'Beta',       val:(0.5+Math.random()*1.5).toFixed(2)},
-      {label:'PEG',        val:(1+Math.random()*2).toFixed(1)+'x'},
-      {label:'Profit Margin',val:(5+Math.random()*30).toFixed(1)+'%'},
-    ],
-    ratings:{strongBuy:Math.floor(Math.random()*20),buy:Math.floor(Math.random()*15),
-      hold:Math.floor(Math.random()*10),sell:Math.floor(Math.random()*5),strongSell:Math.floor(Math.random()*3)},
-    priceTarget:{low:price*0.8,high:price*1.5,target:price*1.15,current:price},
-    financials:[
-      {label:'Revenue',val:fmtLargeNum((1e8+Math.random()*1e11).toString())},
-      {label:'Net Income',val:fmtLargeNum((1e7+Math.random()*1e10).toString())},
-      {label:'ROE',val:(5+Math.random()*40).toFixed(1)+'%'},
-      {label:'Debt/Equity',val:(Math.random()*2).toFixed(2)},
-      {label:'Beta',val:(0.5+Math.random()*1.5).toFixed(2)},
-    ]
-  };
-}
 
 function fmtMetric(v) {
   const n = parseFloat(v);
@@ -443,13 +696,15 @@ function fmtMetric(v) {
   return n.toFixed(2) + 'x';
 }
 
-function fmtLargeNum(v) {
+function fmtLargeNum(v) { return fmtLargeNumCcy(v, '$'); }
+
+function fmtLargeNumCcy(v, ccy = '$') {
   const n = parseFloat(v);
   if (!v || isNaN(n)) return '—';
-  if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
-  if (n >= 1e9)  return '$' + (n/1e9).toFixed(2) + 'B';
-  if (n >= 1e6)  return '$' + (n/1e6).toFixed(2) + 'M';
-  return '$' + n.toFixed(0);
+  if (n >= 1e12) return ccy + (n/1e12).toFixed(2) + 'T';
+  if (n >= 1e9)  return ccy + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6)  return ccy + (n/1e6).toFixed(2) + 'M';
+  return ccy + n.toFixed(0);
 }
 
 const research = new StockResearch();

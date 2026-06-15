@@ -137,18 +137,7 @@ const ETF_DB = {
     regions: { "United States": 100 },
     sectors: { "Technology":31.7, "Financials":13.3, "Healthcare":11.9, "Consumer Disc":10.9, "Communication":9.5, "Industrials":8.6, "Consumer Staples":5.7, "Energy":4.0, "Materials":2.4, "Utilities":2.0, "Real Estate":2.0 }
   },
-  "IS3N": {
-    name: "iShares Core MSCI EM", isin: "IE00BKM4GZ66",
-    ter: 0.18, aum: 12000, currency: "USD",
-    description: "MSCI Emerging Markets — large and mid cap",
-    holdings: {
-      "2330.TW": 6.98, "005930.KS":4.68, "700.HK":3.98, "9988.HK":3.12,
-      "INFY":   1.72, "SBIN.BO":  1.38, "3690.HK":0.86, "HDFC.BO": 0.84,
-      "9999.HK":0.81, "JD":      0.65, "BIDU":   0.64, "VALE3.SA":0.69
-    },
-    regions: { "China":28.8, "India":18.4, "Taiwan":16.8, "South Korea":12.2, "Brazil":5.1, "Saudi Arabia":3.9, "Other":14.8 },
-    sectors: { "Technology":23.1, "Financials":21.4, "Consumer Disc":12.8, "Communication":9.4, "Materials":7.4, "Industrials":6.8, "Consumer Staples":5.4, "Energy":5.1, "Healthcare":4.8, "Utilities":2.4, "Real Estate":1.4 }
-  },
+  /* IS3N removed — identical ISIN IE00BKM4GZ66 as EIMI; both are exchange tickers for the same fund */
   "IQQW": {
     name: "iShares MSCI World Quality", isin: "IE00BP3QZD73",
     ter: 0.30, aum: 3100, currency: "USD",
@@ -198,7 +187,54 @@ const ETF_DB = {
     sectors: { "Technology":18.4, "Industrials":14.8, "Financials":18.4, "Consumer Disc":10.8, "Healthcare":8.8, "Energy":8.4, "Consumer Staples":6.8, "Materials":6.8, "Communication":4.1, "Utilities":3.7 }
   },
 
+  /* ── Austrian fund — SPK OÖ KAG (Sparkasse OÖ Kapitalanlagegesellschaft) ── */
+
+  /* AT0000859848 "INTERSTOCK T" — Interstock Thesaurierend
+     International equity fund managed by Sparkasse OÖ KAG.
+     Sector/region data is an estimate based on the fund's international-equity mandate.
+     Benchmark: broadly similar to MSCI World with a slight European tilt. */
+  "INTERSTOCK-T": {
+    name: "Interstock Thesaurierend (SPK OÖ KAG)", isin: "AT0000859848",
+    ter: 1.50, aum: null, currency: "EUR",
+    description: "Aktiv verwalteter internationaler Aktienfonds der Sparkasse OÖ KAG (thesaurierend). Sektor- und Regionaldaten sind Schätzwerte.",
+    holdings: {},
+    regions: { "North America": 62.0, "Europe": 22.0, "Japan": 7.0, "Pacific ex-JP": 4.0, "Emerging Markets": 5.0 },
+    sectors: { "Technology": 19.0, "Financials": 17.0, "Healthcare": 12.0, "Industrials": 11.0, "Consumer Disc": 10.0, "Communication": 8.0, "Consumer Staples": 7.0, "Energy": 5.0, "Materials": 4.0, "Utilities": 4.0, "Real Estate": 3.0 }
+  },
+
   /* ── User's actual ETFs (from securities_export) ── */
+
+  /* Xtrackers MSCI World 1C — accumulating share class, IE-domicile */
+  "XMWD": {
+    name: "Xtrackers MSCI World UCITS ETF 1C", isin: "IE00BK1PV551",
+    ter: 0.19, aum: 9200, currency: "USD",
+    description: "MSCI World Index — synthetische Replikation, thesaurierend (accumulating). Gleiche Index-Exposition wie XDWD2, andere Anteilsklasse.",
+    holdings: {
+      "AAPL":4.85,"MSFT":4.35,"NVDA":3.88,"AMZN":2.75,"META":2.05,
+      "GOOGL":1.72,"GOOG":1.50,"AVGO":1.38,"TSLA":1.15,"LLY":1.11,
+      "BRK.B":0.96,"JPM":0.90,"WMT":0.79,"V":0.77,"UNH":0.76,
+      "XOM":0.69,"MA":0.67,"JNJ":0.60,"HD":0.59,"PG":0.58,
+      "ASML":0.47,"SAP":0.42,"NVO":0.42,"NESN":0.40,"TM":0.43
+    },
+    regions: { "North America":70.1,"Europe":15.8,"Japan":5.6,"Pacific ex-JP":4.5,"Other":4.0 },
+    sectors: { "Technology":23.1,"Financials":14.6,"Healthcare":12.0,"Consumer Disc":11.0,"Industrials":10.7,"Communication":8.5,"Consumer Staples":6.8,"Energy":4.4,"Materials":3.7,"Utilities":2.4,"Real Estate":2.8 }
+  },
+
+  /* Amundi MSCI Emerging Markets UCITS ETF Dist — LU-domicile */
+  "PAEEM": {
+    name: "Amundi MSCI Emerging Markets UCITS ETF Dist", isin: "LU2573966905",
+    ter: 0.20, aum: 5400, currency: "USD",
+    description: "MSCI Emerging Markets Index — physische Replikation, ausschüttend. Größte Märkte: China, Taiwan, Indien, Südkorea.",
+    holdings: {
+      "2330.TW":6.98,"005930.KS":4.68,"700.HK":3.98,"9988.HK":3.12,
+      "INFY":1.72,"SBIN.BO":1.38,"3690.HK":0.86,"HDFC.BO":0.84,
+      "9999.HK":0.81,"JD":0.65,"BIDU":0.64,"VALE3.SA":0.69,
+      "005935.KS":0.62,"RELIANCE.BO":0.58,"ITUB4.SA":0.52
+    },
+    regions: { "China":28.8,"India":18.4,"Taiwan":16.8,"South Korea":12.2,"Brazil":5.1,"Saudi Arabia":3.9,"Other":14.8 },
+    sectors: { "Technology":23.1,"Financials":21.4,"Consumer Disc":12.8,"Communication":9.4,"Materials":7.4,"Industrials":6.8,"Consumer Staples":5.4,"Energy":5.1,"Healthcare":4.8,"Utilities":2.4,"Real Estate":1.4 }
+  },
+
   "XDWD2": {
     name: "Xtrackers MSCI World Swap UCITS ETF 1D", isin: "LU2263803533",
     ter: 0.19, aum: 7800, currency: "USD",
@@ -216,12 +252,27 @@ const ETF_DB = {
   "XDWT": {
     name: "Xtrackers MSCI World IT Sector UCITS ETF", isin: "IE00BM67HT60",
     ter: 0.25, aum: 2100, currency: "USD",
-    description: "MSCI World Information Technology sector — concentrated tech exposure",
+    description: "MSCI World Information Technology sector — ~150 global IT companies, market-cap weighted",
     holdings: {
-      "MSFT":18.42,"NVDA":16.84,"AAPL":15.91,"AVGO":5.84,"AMD":3.41,
-      "ORCL":3.21,"CRM":2.98,"ACN":2.84,"INTU":2.41,"ASML":2.18,
-      "IBM":1.98,"ADBE":1.84,"TXN":1.72,"CSCO":1.58,"NOW":1.41,
-      "SAP":1.38,"QCOM":1.32,"AMAT":1.28,"LRCX":1.12,"SNPS":0.98
+      /* Mega-cap US tech */
+      "MSFT":18.12,"NVDA":16.54,"AAPL":15.68,"AVGO":5.72,"AMD":3.34,
+      "ORCL":3.14,"CRM":2.92,"ACN":2.78,"INTU":2.34,"ASML":2.12,
+      "IBM":1.94,"ADBE":1.81,"TXN":1.68,"CSCO":1.54,"NOW":1.38,
+      "SAP":1.34,"QCOM":1.28,"AMAT":1.24,"LRCX":1.08,"SNPS":0.96,
+      /* Tier 2 US & global IT */
+      "CDNS":0.91,"PANW":0.88,"KLAC":0.84,"MRVL":0.81,"MU":0.78,
+      "FTNT":0.74,"MSI":0.71,"ANSS":0.68,"KEYS":0.64,"EPAM":0.61,
+      "TEL":0.58,"GLW":0.55,"HPQ":0.52,"STX":0.49,"WDC":0.47,
+      "CTSH":0.44,"JNPR":0.42,"IT":0.39,"GDDY":0.37,"VRSN":0.35,
+      /* Asian IT (Japan, Korea, Taiwan incl.) */
+      "6758.T":0.88,"6861.T":0.84,"9432.T":0.78,"6954.T":0.74,"8035.T":0.68,
+      "000660.KS":0.64,"035420.KS":0.58,"2454.TW":0.54,"2308.TW":0.48,"3008.TW":0.44,
+      /* European IT */
+      "CAP.PA":0.62,"DASSF":0.58,"LONN.SW":0.52,"NOKIA.HE":0.48,"ERICB.ST":0.44,
+      "NESTE.HE":0.38,"SOPRA.PA":0.34,"SOFTWARE.DE":0.31,"TEMN.SW":0.28,"KNEBV.HE":0.24,
+      /* Additional US IT */
+      "ANET":0.42,"ZS":0.38,"CRWD":0.35,"OKTA":0.32,"SNOW":0.29,
+      "DDOG":0.27,"NET":0.25,"MDB":0.23,"TEAM":0.21,"ZM":0.18
     },
     regions: { "United States":75.4,"Europe":12.8,"Japan":5.1,"South Korea":3.4,"Other":3.3 },
     sectors: { "Technology":100 }
@@ -240,19 +291,52 @@ const ETF_DB = {
   "ICOM": {
     name: "iShares Diversified Commodity Swap UCITS ETF", isin: "IE00BDFL4P12",
     ter: 0.19, aum: 2400, currency: "USD",
-    description: "Bloomberg Commodity Index — diversified commodity exposure via swaps",
-    holdings: {},
+    description: "Bloomberg Commodity Index — synthetische Swap-Replikation auf 23 Rohstoff-Futures (Energie, Metalle, Agrar, Vieh)",
+    holdings: {
+      "Gold (GC)":       14.21,
+      "Rohöl WTI (CL)":  8.74,
+      "Brent Crude (CO)": 8.12,
+      "Kupfer (HG)":      7.84,
+      "Erdgas (NG)":      7.31,
+      "Soybeans (S)":     5.92,
+      "Corn (C)":         5.61,
+      "Aluminium (LA)":   4.83,
+      "Silber (SI)":      4.48,
+      "Zucker (SB)":      3.82,
+      "Live Cattle (LC)": 3.41,
+      "Weizen (W)":       3.18,
+      "Soybean Oil (BO)": 2.94,
+      "Zink (LX)":        2.76,
+      "Kaffee (KC)":      2.12,
+      "Lean Hogs (LH)":   1.94,
+      "Kansas Wheat (KW)":1.82,
+      "Baumwolle (CT)":   1.58,
+      "Nickel (LN)":      1.47,
+      "Blei (LL)":        0.84,
+      "HRW Wheat":        0.79,
+      "Sojamehl (SM)":    0.74,
+      "Kakao (CC)":       0.52
+    },
     regions: { "Global Commodities": 100 },
     sectors: { "Energy":32.4,"Agriculture":28.8,"Metals":22.4,"Livestock":10.2,"Other Commodities":6.2 }
   },
   "BNKS": {
     name: "iShares S&P U.S. Banks UCITS ETF", isin: "IE00BD3V0B10",
     ter: 0.35, aum: 980, currency: "USD",
-    description: "S&P Banks Select Industry Index — US bank stocks",
+    description: "S&P Banks Select Industry Index — all 46 US bank constituents (modified equal-weight)",
     holdings: {
-      "JPM":10.42,"BAC":9.84,"WFC":8.21,"GS":7.84,"MS":6.98,
-      "C":6.42,"USB":4.84,"TFC":3.98,"PNC":3.84,"SCHW":3.41,
-      "COF":3.12,"BK":2.98,"STT":2.84,"KEY":2.41,"FITB":2.28
+      /* Large-cap / S&P 500 banks */
+      "JPM":9.84,"BAC":9.12,"WFC":7.84,"GS":7.21,"MS":6.84,
+      "C":6.12,"USB":4.61,"TFC":3.82,"PNC":3.68,"SCHW":3.42,
+      "COF":2.98,"BK":2.84,"STT":2.71,"KEY":2.28,"FITB":2.14,
+      "MTB":2.08,"HBAN":1.98,"RF":1.92,"CFG":1.84,"NTRS":1.62,
+      /* Mid-cap / S&P MidCap 400 banks */
+      "FHN":1.41,"ZION":1.34,"CMA":1.28,"WTFC":0.98,"WAL":0.94,
+      "WBS":0.88,"BOKF":0.84,"CBSH":0.81,"BFH":0.78,"GBCI":0.68,
+      "FFIN":0.64,"FULT":0.61,"HWC":0.58,"WAFD":0.54,"FNB":0.51,
+      "COLB":0.48,"SFBS":0.46,"EBC":0.43,"WSFS":0.41,"NBT":0.39,
+      "BANR":0.37,"IBCP":0.34,"BUSE":0.32,"BCAL":0.30,"SBCF":0.28,
+      "PFIS":0.22
     },
     regions: { "United States": 100 },
     sectors: { "Financials": 100 }
@@ -260,11 +344,19 @@ const ETF_DB = {
   "INRG": {
     name: "iShares Global Clean Energy UCITS ETF", isin: "IE00B1XNHC34",
     ter: 0.65, aum: 3200, currency: "USD",
-    description: "S&P Global Clean Energy Index — clean energy producers and tech",
+    description: "S&P Global Clean Energy Index — ~60 clean energy producers and technology companies",
     holdings: {
-      "ENPH":8.42,"NEE":7.84,"CEG":7.21,"FSLR":6.84,"ORSTED":6.41,
-      "RUN":5.84,"BEP":5.21,"AES":4.98,"SEDG":4.84,"PLUG":3.41,
-      "VESTAS":3.12,"EDP":2.98,"IBERDROLA":2.84,"ENEL":2.41,"SOLAREDS":2.18
+      /* Top holdings */
+      "ENPH":8.21,"NEE":7.64,"CEG":7.08,"FSLR":6.72,"ORSTED":6.12,
+      "RUN":5.41,"BEP":4.98,"AES":4.72,"SEDG":4.42,"PLUG":3.21,
+      "VESTAS":2.98,"EDP":2.84,"IBERDROLA":2.72,"ENEL":2.41,"BEPC":2.18,
+      /* Additional holdings */
+      "ORA":1.98,"CWEN":1.84,"BLX":1.72,"ERG.MI":1.58,"CPFE3.SA":1.42,
+      "CSIQ":1.34,"JKS":1.28,"DQ":1.21,"GWH":1.14,"MAXN":1.08,
+      "NOVA":0.98,"ARRY":0.92,"SHLS":0.88,"HASI":0.84,"AZRE":0.78,
+      "PEGI":0.72,"AMPS":0.68,"SPWR":0.64,"VWSYF":0.61,"IBE.MC":0.58,
+      "9RE.SI":0.54,"PIF":0.48,"EDPR.LS":0.44,"GREEN.OL":0.41,"SCATC.OL":0.38,
+      "EVN.AX":0.35,"INFIGEN":0.32,"GRL.AX":0.28,"OPTT":0.24,"AMPE":0.21
     },
     regions: { "United States":42.4,"Europe":28.8,"Canada":8.4,"China":6.8,"Other":13.6 },
     sectors: { "Energy":60.4,"Utilities":28.8,"Technology":7.4,"Industrials":3.4 }
@@ -272,11 +364,21 @@ const ETF_DB = {
   "DFNS": {
     name: "VanEck Defense UCITS ETF", isin: "IE000YYE6WK5",
     ter: 0.55, aum: 1800, currency: "USD",
-    description: "MarketVector Global Defense Industry Index — global defence companies",
+    description: "MarketVector Global Defense Industry Index — ~100 global defence and aerospace companies",
     holdings: {
-      "RTX":9.84,"LMT":9.42,"NOC":8.84,"GD":8.21,"BA":7.98,
-      "L3H":5.84,"LHX":5.41,"HII":4.84,"LDOS":4.21,"BAH":3.98,
-      "RHM.DE":3.84,"AIR":3.41,"BA.L":3.12,"MBDA":2.84,"SAAB-B":2.41
+      /* US prime contractors */
+      "RTX":9.42,"LMT":9.08,"NOC":8.64,"GD":7.98,"BA":7.72,
+      "L3H":5.61,"LHX":5.28,"HII":4.72,"LDOS":4.08,"BAH":3.84,
+      /* European defence */
+      "RHM.DE":3.68,"AIR":3.28,"BA.L":2.98,"SAAB-B":2.31,"LEI.PA":2.18,
+      "DASSAULT":2.08,"TKMS":1.84,"TXT":1.72,"HEICO":1.58,"HWM":1.44,
+      /* US aerospace & services */
+      "AXON":1.38,"KTOS":1.28,"MOOG":1.18,"DRS":1.08,"CACI":0.98,
+      "SAIC":0.92,"SPAR":0.88,"MSAI":0.84,"PLTR":0.78,"OSIS":0.72,
+      /* Additional global defence */
+      "BAEL.WA":0.68,"DFEN":0.64,"IEC":0.61,"ESYS":0.58,"CWST":0.54,
+      "AVAV":0.51,"KRATOS":0.48,"AEROJET":0.44,"SPCE":0.38,"VSAT":0.35,
+      "FLIR":0.32,"DRS.TO":0.29,"OTIS":0.25,"AXYS":0.22,"ELBIT.TA":0.19
     },
     regions: { "United States":66.8,"Europe":26.4,"Other":6.8 },
     sectors: { "Industrials":72.4,"Technology":18.8,"Consumer Disc":8.8 }

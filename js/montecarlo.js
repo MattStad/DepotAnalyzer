@@ -41,6 +41,17 @@ class MonteCarloSim {
     };
   }
 
+  applyFromPortfolio(stats) {
+    if (!stats) { showToast('Kein Portfolio importiert — bitte zuerst CSV hochladen', 'error'); return; }
+    document.getElementById('mc-initial').value  = Math.round(stats.totalValue);
+    document.getElementById('mc-monthly').value  = stats.monthly;
+    document.getElementById('mc-mu').value       = stats.mu;
+    document.getElementById('mc-sigma').value    = stats.sigma;
+    setText('mc-mu-val',    stats.mu.toFixed(1));
+    setText('mc-sigma-val', stats.sigma.toFixed(1));
+    showToast(`Portfolio übernommen: ${fmt(stats.totalValue)} · μ=${stats.mu}% · σ=${stats.sigma}%`, 'success');
+  }
+
   applyPreset(preset) {
     const presets = {
       'world-etf':   { mu: 7,  sigma: 15 },

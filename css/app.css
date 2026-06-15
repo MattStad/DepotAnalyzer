@@ -301,7 +301,8 @@ body {
 .overlap-matrix table { border-collapse: collapse; width: 100%; }
 .overlap-matrix th, .overlap-matrix td { padding: 8px 10px; text-align: center; font-size: 12px; border: 1px solid var(--border); }
 .overlap-matrix th { background: var(--bg3); color: var(--text2); font-size: 11px; font-weight: 600; }
-.overlap-cell { font-family: 'JetBrains Mono', monospace; font-weight: 600; border-radius: 4px; }
+.overlap-cell { font-family: 'JetBrains Mono', monospace; font-weight: 600; border-radius: 4px; transition: transform .1s, box-shadow .15s; }
+.overlap-cell:hover { transform: scale(1.05); box-shadow: 0 0 12px rgba(6,200,216,.3); z-index: 1; position: relative; }
 
 /* ── Research Section ───────────────────────────────────────── */
 .search-bar-hero {
@@ -426,6 +427,42 @@ body {
 .data-row .val { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; }
 .data-row .chg { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 
+/* Macro — refresh button */
+.macro-refresh-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text2);
+  border-radius: var(--radius); transition: background .15s, color .15s;
+}
+.macro-refresh-btn:hover { background: var(--bg4); color: var(--cyan); border-color: var(--cyan-dim); }
+.macro-refresh-btn i { font-size: 10px; }
+
+/* Macro — skeleton loader */
+.macro-loading {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text3); font-size: 12px; padding: 18px 0;
+}
+.macro-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid var(--border2); border-top-color: var(--cyan);
+  border-radius: 50%; animation: macroSpin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes macroSpin { to { transform: rotate(360deg); } }
+
+/* Economic Calendar grid */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+.calendar-event {
+  padding: 10px 12px; background: var(--bg3); border-radius: var(--radius);
+  border-left: 3px solid var(--border2);
+}
+
+/* Impact badges (already defined globally above — calendar reuses them) */
+
 /* ── Monte Carlo ──────────────────────────────────────────────── */
 .mc-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
 @media (max-width: 800px) { .mc-layout { grid-template-columns: 1fr; } }
@@ -484,8 +521,8 @@ body {
 .legend-pct   { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
 
 /* When chart-body has donut: side by side */
-.chart-body.donut-layout { display: flex; gap: 16px; height: auto; padding: 16px; }
-.chart-body.donut-layout canvas { position: static; width: 200px !important; height: 200px !important; flex-shrink: 0; }
+.chart-body.donut-layout { display: flex; gap: 16px; height: auto; padding: 16px; align-items: flex-start; }
+.chart-body.donut-layout canvas { position: static; width: 200px !important; height: 200px !important; flex-shrink: 0; min-width: 200px; min-height: 200px; }
 
 /* ── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }

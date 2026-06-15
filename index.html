@@ -110,6 +110,7 @@
           <div class="kpi-card"><div class="kpi-label">Positions</div><div class="kpi-value" id="kpi-positions">—</div><div class="kpi-delta">Holdings</div></div>
           <div class="kpi-card"><div class="kpi-label">Dividends</div><div class="kpi-value" id="kpi-dividends">—</div><div class="kpi-delta" id="kpi-div-sub"></div></div>
           <div class="kpi-card"><div class="kpi-label">Fees Paid</div><div class="kpi-value" id="kpi-fees">—</div><div class="kpi-delta">Total costs</div></div>
+          <div class="kpi-card"><div class="kpi-label">Realrendite</div><div class="kpi-value" id="kpi-real-return">—</div><div class="kpi-delta">Inflation adj.</div></div>
         </div>
 
         <div class="two-col">
@@ -152,7 +153,7 @@
                 <th>Name</th><th>ISIN</th><th>Type</th>
                 <th class="num">Shares</th><th class="num">Avg. Cost</th>
                 <th class="num">Cur. Price</th><th class="num">Value</th>
-                <th class="num">P&amp;L</th><th class="num">P&amp;L %</th><th class="num">Weight</th>
+                <th class="num">P&amp;L</th><th class="num">P&amp;L %</th><th class="num">CAGR/yr</th><th class="num">Weight</th>
               </tr></thead>
               <tbody id="holdings-tbody"></tbody>
             </table>
@@ -184,35 +185,77 @@
       <div class="section-header">
         <div>
           <h1>ETF Overlap &amp; True Exposure</h1>
-          <p class="section-sub">Uncover hidden concentration risks and effective allocation</p>
+          <p class="section-sub">Analyse dein Portfolio auf versteckte Überschneidungen und effektive Gewichtung</p>
         </div>
         <div class="section-actions">
           <select id="add-etf-select" class="select-input">
-            <option value="">+ Add ETF manually</option>
+            <option value="">+ ETF manuell hinzufügen</option>
           </select>
         </div>
       </div>
 
       <div id="etf-chips" class="chip-row"></div>
 
+      <!-- KPI Summary -->
+      <div id="etf-kpis"></div>
+
       <div class="two-col">
         <div class="card">
-          <div class="card-header"><h3>Overlap Matrix</h3><span class="card-hint">% holdings shared</span></div>
+          <div class="card-header"><h3>Overlap Matrix</h3><span class="card-hint">Klicke auf eine Zelle für Details</span></div>
           <div class="card-body"><div id="overlap-matrix"></div></div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>True Exposure by Region</h3></div>
+          <div class="card-header"><h3>Regionale Exposure</h3></div>
           <div class="card-body chart-body"><canvas id="exposure-chart"></canvas></div>
         </div>
       </div>
 
+      <!-- Overlap Detail Panel (appears when clicking matrix cell) -->
+      <div id="overlap-detail" class="card" style="display:none">
+        <div class="card-header">
+          <h3 id="overlap-detail-title">Overlap Detail</h3>
+          <button class="icon-btn" onclick="etfAnalyzer.closeDetail()" title="Schließen"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <div id="overlap-detail-summary"></div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr>
+                <th>Aktie</th>
+                <th id="overlap-detail-colA" class="num">ETF A</th>
+                <th id="overlap-detail-colB" class="num">ETF B</th>
+                <th class="num">Overlap</th>
+              </tr></thead>
+              <tbody id="overlap-detail-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sector Exposure -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>Sektor-Exposure</h3></div>
+          <div class="card-body chart-body"><canvas id="sector-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>ETF-Vergleich je Sektor</h3></div>
+          <div class="card-body chart-body"><canvas id="sector-breakdown-chart"></canvas></div>
+        </div>
+      </div>
+
       <div class="card">
-        <div class="card-header"><h3>Effective Top Holdings <span class="card-hint">(deduplicated, weighted)</span></h3></div>
+        <div class="card-header"><h3>Effektive Top Holdings <span class="card-hint">(dedupliziert, portfoliogewichtet)</span></h3></div>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr>
-              <th>Holding</th><th>Appears In</th><th>Sector</th><th>Country</th>
-              <th class="num">Avg ETF Weight</th><th class="num">Effective Weight</th>
+            <thead><tr id="holdings-sort-header">
+              <th data-sort="ticker">Aktie</th>
+              <th data-sort="etfs">In ETFs</th>
+              <th data-sort="overlapCount" class="num">Overlap</th>
+              <th data-sort="sector">Sektor</th>
+              <th data-sort="country">Land</th>
+              <th data-sort="avgW" class="num">Ø ETF-Gewicht</th>
+              <th data-sort="effectiveW" class="num">Eff. Portfolio-Gewicht</th>
             </tr></thead>
             <tbody id="overlap-holdings-tbody"></tbody>
           </table>
@@ -226,10 +269,11 @@
         <div><h1>Stock Research</h1><p class="section-sub">Deep-dive valuation, insiders, and analyst consensus</p></div>
       </div>
 
-      <div class="search-bar-hero">
+      <div class="search-bar-hero" style="position:relative">
         <i class="fas fa-search"></i>
-        <input type="text" id="stock-search" placeholder="Enter ticker or company (e.g. AAPL, MSFT, SAP, VOW.DE)…" autocomplete="off">
+        <input type="text" id="stock-search" placeholder="Ticker, ISIN oder Name — z.B. EBS.VIE, OMV.VIE, AAPL, AT0000652011…" autocomplete="off">
         <button class="btn btn-primary" id="stock-search-btn">Analyze</button>
+        <div id="search-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border1);border-top:none;border-radius:0 0 10px 10px;z-index:200;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
       </div>
 
       <div id="research-empty" class="empty-state">
@@ -237,13 +281,22 @@
         <h3>Search for any stock</h3>
         <p>Enter a ticker symbol to get valuation metrics, analyst ratings, insider activity, and peer comparisons</p>
         <div class="quick-tickers">
+          <span style="color:var(--text3);font-size:11px;align-self:center">🇦🇹</span>
+          <button class="pill-btn" onclick="research.search('EBS.VIE')">Erste</button>
+          <button class="pill-btn" onclick="research.search('OMV.VIE')">OMV</button>
+          <button class="pill-btn" onclick="research.search('VOE.VIE')">voestalpine</button>
+          <button class="pill-btn" onclick="research.search('ANDR.VIE')">Andritz</button>
+          <button class="pill-btn" onclick="research.search('VER.VIE')">Verbund</button>
+          <button class="pill-btn" onclick="research.search('RBI.VIE')">RBI</button>
+        </div>
+        <div class="quick-tickers" style="margin-top:6px">
+          <span style="color:var(--text3);font-size:11px;align-self:center">🇩🇪🇺🇸</span>
+          <button class="pill-btn" onclick="research.search('SAP')">SAP</button>
+          <button class="pill-btn" onclick="research.search('ASML')">ASML</button>
           <button class="pill-btn" onclick="research.search('AAPL')">AAPL</button>
           <button class="pill-btn" onclick="research.search('MSFT')">MSFT</button>
           <button class="pill-btn" onclick="research.search('NVDA')">NVDA</button>
-          <button class="pill-btn" onclick="research.search('AMZN')">AMZN</button>
           <button class="pill-btn" onclick="research.search('TSLA')">TSLA</button>
-          <button class="pill-btn" onclick="research.search('SAP')">SAP</button>
-          <button class="pill-btn" onclick="research.search('ASML')">ASML</button>
         </div>
       </div>
 
@@ -315,27 +368,81 @@
     <!-- ── MACRO ───────────────────────────────────────────── -->
     <section id="section-macro" class="section hidden">
       <div class="section-header">
-        <div><h1>Macro Dashboard</h1><p class="section-sub">Key economic indicators for informed allocation decisions</p></div>
-        <span class="data-freshness">Data: Static reference · Jun 2025</span>
+        <div>
+          <h1>Macro Dashboard</h1>
+          <p class="section-sub">Live Wirtschaftsdaten via Alpha Vantage · ECB · ExchangeRate-API · CoinGecko</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span id="macro-freshness" class="data-freshness">Wird geladen…</span>
+          <button class="macro-refresh-btn" onclick="macro.render(true)" title="Alle Daten neu laden">
+            <i class="fas fa-sync-alt"></i> Aktualisieren
+          </button>
+        </div>
       </div>
 
       <div class="macro-grid">
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-university"></i> Central Bank Rates</h3></div>
-          <div class="card-body"><div id="cb-rates"></div></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-fire"></i> Inflation (CPI YoY)</h3></div>
-          <div class="card-body chart-body"><canvas id="cpi-chart"></canvas></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-chart-line"></i> US Yield Curve</h3></div>
-          <div class="card-body chart-body"><canvas id="yield-chart"></canvas></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-heartbeat"></i> Market Sentiment</h3></div>
-          <div class="card-body"><div id="sentiment-block"></div></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-chart-bar"></i> GDP Growth</h3></div>
-          <div class="card-body chart-body"><canvas id="gdp-chart"></canvas></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-oil-can"></i> Commodities</h3></div>
-          <div class="card-body"><div id="commodities-block"></div></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-exchange-alt"></i> FX Rates</h3></div>
-          <div class="card-body"><div id="fx-block"></div></div></div>
-        <div class="card macro-card"><div class="card-header"><h3><i class="fas fa-balance-scale"></i> CAPE (Shiller P/E)</h3></div>
-          <div class="card-body chart-body"><canvas id="cape-chart"></canvas></div></div>
+        <!-- Central Bank Rates -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-university"></i> Leitzinsen</h3></div>
+          <div class="card-body"><div id="cb-rates"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
+
+        <!-- CPI Inflation -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-fire"></i> Inflation (CPI YoY)</h3></div>
+          <div class="card-body chart-body"><canvas id="cpi-chart"></canvas></div>
+        </div>
+
+        <!-- US Yield Curve -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-chart-line"></i> US Renditekurve</h3></div>
+          <div class="card-body">
+            <div id="yield-spread" style="padding:6px 0 4px;font-size:12px;min-height:22px"></div>
+            <div class="chart-body" style="height:190px"><canvas id="yield-chart"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Market Sentiment -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-heartbeat"></i> Marktsentiment</h3></div>
+          <div class="card-body"><div id="sentiment-block"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
+
+        <!-- GDP Growth -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-chart-bar"></i> BIP-Wachstum</h3></div>
+          <div class="card-body chart-body"><canvas id="gdp-chart"></canvas></div>
+        </div>
+
+        <!-- Labor Market -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-briefcase"></i> Arbeitsmarkt USA</h3></div>
+          <div class="card-body"><div id="labor-block"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
+
+        <!-- Commodities -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-oil-can"></i> Rohstoffe</h3></div>
+          <div class="card-body"><div id="commodities-block"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
+
+        <!-- FX Rates -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-exchange-alt"></i> Wechselkurse &amp; Krypto</h3></div>
+          <div class="card-body"><div id="fx-block"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
+
+        <!-- CAPE -->
+        <div class="card macro-card">
+          <div class="card-header"><h3><i class="fas fa-balance-scale"></i> CAPE (Shiller P/E)</h3></div>
+          <div class="card-body chart-body"><canvas id="cape-chart"></canvas></div>
+        </div>
+
+        <!-- Economic Calendar — full width -->
+        <div class="card macro-card" style="grid-column:1/-1">
+          <div class="card-header"><h3><i class="fas fa-calendar-alt"></i> Wirtschaftskalender — anstehende Events</h3></div>
+          <div class="card-body"><div id="calendar-block"><div class="macro-loading"><span class="macro-spinner"></span> Lade…</div></div></div>
+        </div>
       </div>
     </section>
 
@@ -391,6 +498,9 @@
                 <option value="crypto">Crypto-Heavy (μ=15%, σ=60%)</option>
               </select>
             </div>
+            <button class="btn btn-ghost btn-full" style="margin-bottom:8px" onclick="mc.applyFromPortfolio(portfolio.getPortfolioStats())">
+              <i class="fas fa-magic"></i> Portfolio verwenden
+            </button>
             <button class="btn btn-primary btn-full" id="mc-run-btn">
               <i class="fas fa-play"></i> Run Simulation
             </button>

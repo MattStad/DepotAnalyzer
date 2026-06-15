@@ -51,6 +51,14 @@ class App {
       setTimeout(() => macro.render(), 60);
     }
 
+    // Re-render ETF charts whenever the section becomes visible
+    // (Chart.js needs non-zero canvas dimensions; deferred render on portfolio load is unreliable)
+    if (section === 'etf') {
+      setTimeout(() => {
+        if (etfAnalyzer.selected.length) etfAnalyzer._renderCharts();
+      }, 80);
+    }
+
     // Init MC canvas with placeholder
     if (section === 'montecarlo') {
       setTimeout(() => {
@@ -81,24 +89,90 @@ class App {
     setInterval(update, 1000);
   }
 
+  /* Live market ticker — Yahoo Finance via free CORS proxy (no API key).
+     One spark request covers all symbols; cached 5 min and refreshed periodically. */
   renderTicker() {
-    const tickers = [
-      { sym: 'S&P 500',    val: '5,460.48',   chg: '+0.51%', pos: true  },
-      { sym: 'NASDAQ',     val: '17,862.23',  chg: '+0.84%', pos: true  },
-      { sym: 'DAX',        val: '18,421.00',  chg: '-0.12%', pos: false },
-      { sym: 'MSCI World', val: '3,754.80',   chg: '+0.38%', pos: true  },
-      { sym: 'EUR/USD',    val: '1.0842',     chg: '+0.09%', pos: true  },
-      { sym: 'Gold',       val: '$2,324',     chg: '+0.32%', pos: true  },
-      { sym: 'BTC',        val: '$67,420',    chg: '+2.14%', pos: true  },
-      { sym: 'VIX',        val: '14.82',      chg: '-3.8%',  pos: false },
-      { sym: '10Y UST',    val: '4.28%',      chg: '-0.04',  pos: false },
+    const num = (v, d = 2) => v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+    this._tickerSyms = [
+      { sym: '^GSPC',    label: 'S&P 500',  fmt: v => num(v) },
+      { sym: '^IXIC',    label: 'NASDAQ',   fmt: v => num(v) },
+      { sym: '^GDAXI',   label: 'DAX',      fmt: v => num(v) },
+      { sym: 'EURUSD=X', label: 'EUR/USD',  fmt: v => v.toFixed(4) },
+      { sym: 'GC=F',     label: 'Gold',     fmt: v => '$' + num(v, 0) },
+      { sym: 'CL=F',     label: 'WTI Öl',   fmt: v => '$' + v.toFixed(2) },
+      { sym: 'BTC-USD',  label: 'BTC',      fmt: v => '$' + num(v, 0) },
+      { sym: 'ETH-USD',  label: 'ETH',      fmt: v => '$' + num(v, 0) },
+      { sym: '^VIX',     label: 'VIX',      fmt: v => v.toFixed(2) },
+      { sym: '^TNX',     label: '10Y UST',  fmt: v => v.toFixed(2) + '%', chgAbs: true },
     ];
-    document.getElementById('market-ticker').innerHTML = tickers.map(t => `
+
+    const el = document.getElementById('market-ticker');
+    // Immediate placeholders — labels only, never fake numbers
+    el.innerHTML = this._tickerSyms.map(s => `
       <div class="ticker-item">
-        <span class="ticker-sym">${t.sym}</span>
-        <span class="ticker-val">${t.val}</span>
-        <span class="ticker-chg ${t.pos ? 'green' : 'red'}">${t.chg}</span>
+        <span class="ticker-sym">${s.label}</span>
+        <span class="ticker-val" data-tval="${s.sym}">…</span>
+        <span class="ticker-chg" data-tchg="${s.sym}"></span>
       </div>`).join('');
+
+    // Show cached values instantly if fresh, then refresh live
+    try {
+      const c = JSON.parse(localStorage.getItem('ticker_cache') || 'null');
+      if (c && Date.now() - c.t < 5 * 60 * 1000) this._paintTicker(c.d);
+    } catch {}
+
+    this._loadTicker();
+    clearInterval(this._tickerTimer);
+    this._tickerTimer = setInterval(() => this._loadTicker(), 5 * 60 * 1000);
+  }
+
+  async _loadTicker() {
+    if (typeof proxyFetchJson !== 'function') return;
+    const syms = this._tickerSyms.map(s => encodeURIComponent(s.sym)).join(',');
+    const url  = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${syms}&range=1d&interval=5m`;
+    const data = await proxyFetchJson(url);
+    if (!data) return;
+
+    // Spark may return a flat map {SYM:{close,chartPreviousClose}} or {spark:{result:[…]}}
+    let flat = data;
+    if (data.spark?.result) {
+      flat = {};
+      for (const r of data.spark.result) {
+        const resp = r.response?.[0];
+        if (!resp) continue;
+        flat[r.symbol] = {
+          close: resp.indicators?.quote?.[0]?.close || [resp.meta?.regularMarketPrice],
+          chartPreviousClose: resp.meta?.chartPreviousClose ?? resp.meta?.previousClose,
+        };
+      }
+    }
+    this._paintTicker(flat);
+    try { localStorage.setItem('ticker_cache', JSON.stringify({ t: Date.now(), d: flat })); } catch {}
+  }
+
+  _paintTicker(data) {
+    const el = document.getElementById('market-ticker');
+    if (!el) return;
+    for (const s of this._tickerSyms) {
+      const q = data[s.sym];
+      if (!q) continue;
+      const closes = Array.isArray(q.close) ? q.close.filter(x => x != null) : [];
+      const price  = closes.length ? closes[closes.length - 1] : null;
+      const prev   = q.chartPreviousClose ?? q.previousClose;
+      if (price == null) continue;
+      const chgAbs = prev ? price - prev : 0;
+      const chgPct = prev ? (chgAbs / prev * 100) : 0;
+      const pos    = chgAbs >= 0;
+      const valEl = el.querySelector(`[data-tval="${CSS.escape(s.sym)}"]`);
+      const chgEl = el.querySelector(`[data-tchg="${CSS.escape(s.sym)}"]`);
+      if (valEl) valEl.textContent = s.fmt(price);
+      if (chgEl) {
+        chgEl.textContent = s.chgAbs
+          ? `${pos ? '+' : ''}${chgAbs.toFixed(2)}`
+          : `${pos ? '+' : ''}${chgPct.toFixed(2)}%`;
+        chgEl.className = `ticker-chg ${pos ? 'green' : 'red'}`;
+      }
+    }
   }
 
   initSettings() {
