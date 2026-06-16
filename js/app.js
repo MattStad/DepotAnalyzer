@@ -216,8 +216,8 @@ class App {
     const hasKey = !!localStorage.getItem('av_key');
     const badge  = document.getElementById('av-status-indicator');
     if (badge) {
-      badge.textContent = hasKey ? 'Active' : 'Needs Key';
-      badge.className   = `badge ${hasKey ? 'badge-green' : 'badge-yellow'}`;
+      badge.textContent = hasKey ? 'Aktiv' : 'Optional';
+      badge.className   = `badge ${hasKey ? 'badge-green' : 'badge-blue'}`;
     }
     if (hasKey) {
       const inp = document.getElementById('av-key-input');
