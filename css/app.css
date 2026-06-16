@@ -293,13 +293,15 @@ body {
   background: var(--bg3); border: 1px solid var(--border2);
   font-size: 12px; font-weight: 600;
 }
-.etf-chip .chip-rm { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
-.etf-chip .chip-rm:hover { color: var(--red); }
+.etf-chip .chip-rm { background: var(--bg4); border: none; color: var(--text2); cursor: pointer; font-size: 14px; line-height: 1; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-left: 2px; transition: background .12s, color .12s; }
+.etf-chip .chip-rm:hover { background: var(--red); color: #fff; }
 
-/* Overlap Matrix */
+/* Overlap Matrix — expands with the number of ETFs and scrolls horizontally
+   instead of squishing cells (keeps it readable with many ETFs selected) */
 .overlap-matrix { overflow-x: auto; }
-.overlap-matrix table { border-collapse: collapse; width: 100%; }
-.overlap-matrix th, .overlap-matrix td { padding: 8px 10px; text-align: center; font-size: 12px; border: 1px solid var(--border); }
+.overlap-matrix table { border-collapse: collapse; width: auto; min-width: 100%; }
+.overlap-matrix th, .overlap-matrix td { padding: 8px 10px; text-align: center; font-size: 12px; border: 1px solid var(--border); min-width: 62px; white-space: nowrap; }
+.overlap-matrix thead th:first-child, .overlap-matrix tbody th { position: sticky; left: 0; z-index: 1; background: var(--bg3); }
 .overlap-matrix th { background: var(--bg3); color: var(--text2); font-size: 11px; font-weight: 600; }
 .overlap-cell { font-family: 'JetBrains Mono', monospace; font-weight: 600; border-radius: 4px; transition: transform .1s, box-shadow .15s; }
 .overlap-cell:hover { transform: scale(1.05); box-shadow: 0 0 12px rgba(6,200,216,.3); z-index: 1; position: relative; }

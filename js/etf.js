@@ -94,6 +94,21 @@ class ETFAnalyzer {
     this.render();
   }
 
+  clearAll() {
+    this.selected = [];
+    this.selectedPair = null;
+    this.selectedSingle = null;
+    this.closeDetail();
+    // Wipe stale visuals (render() returns early when nothing is selected)
+    const matrix = document.getElementById('overlap-matrix');
+    if (matrix) matrix.innerHTML = '';
+    const tbody = document.getElementById('overlap-holdings-tbody');
+    if (tbody) tbody.innerHTML = '';
+    [this.exposureChart, this.sectorChart, this.sectorBreakdownChart].forEach(c => c && c.destroy());
+    this.exposureChart = this.sectorChart = this.sectorBreakdownChart = null;
+    this.render();
+  }
+
   render() {
     this._updateChips();
     if (!this.selected.length) {

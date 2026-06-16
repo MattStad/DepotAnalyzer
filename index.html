@@ -191,6 +191,7 @@
           <select id="add-etf-select" class="select-input">
             <option value="">+ ETF manuell hinzufügen</option>
           </select>
+          <button class="btn btn-ghost" id="clear-etfs-btn" onclick="etfAnalyzer.clearAll()"><i class="fas fa-trash"></i> Alle entfernen</button>
         </div>
       </div>
 
@@ -199,15 +200,9 @@
       <!-- KPI Summary -->
       <div id="etf-kpis"></div>
 
-      <div class="two-col">
-        <div class="card">
-          <div class="card-header"><h3>Overlap Matrix</h3><span class="card-hint">Klicke auf eine Zelle für Details</span></div>
-          <div class="card-body"><div id="overlap-matrix"></div></div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Regionale Exposure</h3></div>
-          <div class="card-body chart-body"><canvas id="exposure-chart"></canvas></div>
-        </div>
+      <div class="card">
+        <div class="card-header"><h3>Overlap Matrix</h3><span class="card-hint">Klicke auf eine Zelle für Details · bei vielen ETFs horizontal scrollbar</span></div>
+        <div class="card-body"><div id="overlap-matrix"></div></div>
       </div>
 
       <!-- Overlap Detail Panel (appears when clicking matrix cell) -->
@@ -232,16 +227,21 @@
         </div>
       </div>
 
-      <!-- Sector Exposure -->
+      <!-- Exposure charts -->
       <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>Regionale Exposure</h3></div>
+          <div class="card-body chart-body"><canvas id="exposure-chart"></canvas></div>
+        </div>
         <div class="card">
           <div class="card-header"><h3>Sektor-Exposure</h3></div>
           <div class="card-body chart-body"><canvas id="sector-chart"></canvas></div>
         </div>
-        <div class="card">
-          <div class="card-header"><h3>ETF-Vergleich je Sektor</h3></div>
-          <div class="card-body chart-body"><canvas id="sector-breakdown-chart"></canvas></div>
-        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>ETF-Vergleich je Sektor</h3></div>
+        <div class="card-body chart-body"><canvas id="sector-breakdown-chart"></canvas></div>
       </div>
 
       <div class="card">
