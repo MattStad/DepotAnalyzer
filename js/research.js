@@ -351,7 +351,7 @@ class StockResearch {
     // Valuation metrics (real; forward P/E needs analyst estimates → not free)
     document.getElementById('valuation-grid').innerHTML = [
       { label: 'P/E (TTM)',     val: fx(f.trailingPeRatio) },
-      { label: 'P/E (Forward)', val: NA },
+      { label: 'FCF Yield',    val: (fcf && mktcap) ? fpct(fcf / mktcap * 100) : NA },
       { label: 'P/B',           val: fx(f.trailingPbRatio, 2) },
       { label: 'P/S',           val: fx(f.trailingPsRatio, 2) },
       { label: 'EV/EBITDA',     val: fx(evEbit) },
