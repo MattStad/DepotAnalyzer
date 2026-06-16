@@ -117,6 +117,74 @@ class MacroDashboard {
     } catch { return null; }
   }
 
+  /* ─── Free, no-key, direct-CORS macro sources ──────────────────
+     NY Fed (Fed funds), BLS (US CPI/unemployment/payrolls), ECB (Euro/DE HICP),
+     World Bank (GDP growth). All official APIs with CORS — no proxy, no key. */
+
+  async _fetchNYFedEFFR() {
+    const hit = this._cget('nyfed_effr'); if (hit !== null) return hit;
+    try {
+      const r = await fetch('https://markets.newyorkfed.org/api/rates/unsecured/effr/last/1.json');
+      const d = await r.json();
+      const ref = d?.refRates?.[0];
+      if (ref?.percentRate == null) return null;
+      const val = { rate: ref.percentRate, date: ref.effectiveDate };
+      this._cset('nyfed_effr', val, 86_400_000);
+      return val;
+    } catch { return null; }
+  }
+
+  /* BLS public API v1 — simple GET (no preflight, no key). Returns data array
+     (latest first), each { year, period:'M05', value }. */
+  async _fetchBLS(seriesId) {
+    const hit = this._cget('bls_' + seriesId); if (hit !== null) return hit;
+    try {
+      const r = await fetch(`https://api.bls.gov/publicAPI/v1/timeseries/data/${seriesId}`);
+      const d = await r.json();
+      const data = d?.Results?.series?.[0]?.data;
+      if (!Array.isArray(data) || !data.length) return null;
+      const monthly = data.filter(x => /^M(0[1-9]|1[0-2])$/.test(x.period));
+      this._cset('bls_' + seriesId, monthly, 86_400_000);
+      return monthly;
+    } catch { return null; }
+  }
+
+  /* ECB SDMX-JSON series → [{ date, value }] ascending. resource = "FLOW/KEY". */
+  async _fetchECBSeries(resource, n = 24) {
+    const ck = 'ecbs_' + resource;
+    const hit = this._cget(ck); if (hit !== null) return hit;
+    try {
+      const r = await fetch(`https://data-api.ecb.europa.eu/service/data/${resource}?format=jsondata&lastNObservations=${n}`);
+      const d = await r.json();
+      const ds = d?.dataSets?.[0];
+      const series = ds && Object.values(ds.series || {})[0];
+      const obs = series?.observations;
+      const times = d?.structure?.dimensions?.observation?.[0]?.values?.map(v => v.id);
+      if (!obs || !times) return null;
+      const arr = Object.keys(obs)
+        .map(k => ({ date: times[+k], value: parseFloat(obs[k][0]) }))
+        .filter(x => x.date && !isNaN(x.value))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      if (!arr.length) return null;
+      this._cset(ck, arr, 86_400_000);
+      return arr;
+    } catch { return null; }
+  }
+
+  /* World Bank annual GDP growth (NY.GDP.MKTP.KD.ZG) for USA, Euro area, Germany. */
+  async _fetchWorldBankGDP() {
+    const hit = this._cget('wb_gdp'); if (hit !== null) return hit;
+    try {
+      const r = await fetch('https://api.worldbank.org/v2/country/USA;EMU;DEU/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=400&mrv=9');
+      const d = await r.json();
+      if (!Array.isArray(d?.[1])) return null;
+      const by = { USA: {}, EMU: {}, DEU: {} };
+      for (const x of d[1]) if (x.value != null && by[x.countryiso3code]) by[x.countryiso3code][x.date] = x.value;
+      this._cset('wb_gdp', by, 604_800_000);   // 7 days (annual data)
+      return by;
+    } catch { return null; }
+  }
+
   /* Yahoo Finance multi-symbol quotes via the shared free CORS proxy (no key).
      Returns { SYMBOL: { price, chgPct } }. Used for live commodities & yields. */
   async _fetchYahooSpark(symbols, range = '1mo') {
@@ -212,6 +280,7 @@ class MacroDashboard {
       wtiR, brentR, ngR, copperR, wheatR, cornR,
       fxR, cryptoR, ecbR, fngR, boeR,
       yComR, yYldR,
+      effrR, blsCpiR, blsUnempR, blsNfpR, ecbCpiEuR, ecbCpiDeR, wbGdpR,
     ] = await Promise.allSettled([
       k ? this._av({ function: 'FEDERAL_FUNDS_RATE', interval: 'monthly' },   'fed_rate',    TTL_ECON) : Promise.resolve(null),
       k ? this._av({ function: 'CPI',                interval: 'monthly' },   'cpi',         TTL_ECON) : Promise.resolve(null),
@@ -236,37 +305,45 @@ class MacroDashboard {
       this._fetchBoERate(),   // optional — CORS may block; graceful fallback
       this._fetchYahooSpark(COM_SYMS, '1mo'),   // live commodities, no key
       this._fetchYahooSpark(YLD_SYMS, '1mo'),   // live yield curve, no key
+      this._fetchNYFedEFFR(),                    // Fed funds (live, no key)
+      this._fetchBLS('CUUR0000SA0'),             // US CPI index → YoY (live, no key)
+      this._fetchBLS('LNS14000000'),             // US unemployment (live, no key)
+      this._fetchBLS('CES0000000001'),           // US nonfarm payrolls (live, no key)
+      this._fetchECBSeries('ICP/M.U2.N.000000.4.ANR', 24),  // Euro-area HICP YoY
+      this._fetchECBSeries('ICP/M.DE.N.000000.4.ANR', 24),  // Germany HICP YoY
+      this._fetchWorldBankGDP(),                 // US/EU/DE GDP growth (annual)
     ]);
 
     const v = r => r.status === 'fulfilled' ? r.value : null;
 
     const yCom = v(yComR), yYld = v(yYldR);
+    const effr = v(effrR), blsCpi = v(blsCpiR), blsUnemp = v(blsUnempR), blsNfp = v(blsNfpR);
+    const ecbCpiEu = v(ecbCpiEuR), ecbCpiDe = v(ecbCpiDeR), wbGdp = v(wbGdpR);
 
-    this.renderCentralBankRates(v(fedR), v(ecbR), v(boeR));
-    this.renderCPI(v(cpiR));
+    this.renderCentralBankRates(v(fedR), v(ecbR), v(boeR), effr);
+    this.renderCPI(v(cpiR), { blsCpi, ecbCpiEu, ecbCpiDe });
     this.renderYieldCurve({ y3m: v(y3m), y2y: v(y2y), y5y: v(y5y), y10y: v(y10y), y30y: v(y30y), yahoo: yYld });
-    this.renderGDP(v(gdpR));
-    this.renderLaborMarket(v(unemR), v(nfpR));
+    this.renderGDP(v(gdpR), wbGdp);
+    this.renderLaborMarket(v(unemR), v(nfpR), { blsUnemp, blsNfp });
     this.renderCommodities({ wti: v(wtiR), brent: v(brentR), ng: v(ngR), copper: v(copperR), wheat: v(wheatR), corn: v(cornR), fx: v(fxR), yahoo: yCom });
     this.renderFX(v(fxR), v(cryptoR));
     this.renderSentiment(v(fngR));
     this.renderCalendar();
     this.renderCAPE();
 
-    // Update freshness badge — market data (commodities, yields, FX, crypto, ECB)
-    // is live without a key; only US macro indicators (CPI/GDP/labor/Fed) need AV.
+    // Freshness badge — virtually everything is now live from free sources (no key).
+    // Only the 4 minor reference rates (BoE/BoJ/SNB/RBA) lack a free CORS source.
     const ts = new Date().toLocaleString('de-AT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
     const el = document.getElementById('macro-freshness');
-    if (el) el.textContent = k
-      ? `📡 Live · ${ts}`
-      : `📡 Märkte live · ⚠ US-Konjunktur statisch · ${ts}`;
+    if (el) el.textContent = `📡 Live · ${ts}`;
   }
 
   /* ─── Central Bank Rates ─────────────────────────────────── */
-  renderCentralBankRates(fedData, ecbRate, boeData) {
+  renderCentralBankRates(fedData, ecbRate, boeData, effr) {
     const fedLatest = this._latest(fedData);
-    const fedRate   = fedLatest ? parseFloat(fedLatest.value) : null;
-    const fedDate   = fedLatest ? fedLatest.date.substring(0, 7) : null;
+    // Prefer NY Fed effective rate (live, no key) over Alpha Vantage
+    const fedRate   = effr?.rate ?? (fedLatest ? parseFloat(fedLatest.value) : null);
+    const fedDate   = effr?.date ? effr.date.substring(0, 7) : (fedLatest ? fedLatest.date.substring(0, 7) : null);
 
     // BoE: live if CORS succeeded, static fallback otherwise
     const boeRate = boeData?.rate ?? 3.75;
@@ -305,33 +382,51 @@ class MacroDashboard {
   }
 
   /* ─── CPI / Inflation Chart ──────────────────────────────── */
-  renderCPI(cpiData) {
+  renderCPI(cpiData, free = {}) {
     const ctx = document.getElementById('cpi-chart')?.getContext('2d');
     if (!ctx) return;
     if (this.charts.cpi) { this.charts.cpi.destroy(); this.charts.cpi = null; }
 
-    const { labels: liveLabels, values: liveUS } = this._yoyFromLevels(cpiData, 20);
+    // US YoY — prefer BLS (live, no key), else Alpha Vantage, else static
+    let usLabels = [], usVals = [];
+    const bls = free.blsCpi;
+    if (Array.isArray(bls) && bls.length > 12) {
+      const asc = [...bls].reverse();  // ascending by date
+      for (let i = 12; i < asc.length; i++) {
+        const c = +asc[i].value, p = +asc[i - 12].value;
+        if (!p) continue;
+        usLabels.push(`${asc[i].year}-${asc[i].period.slice(1)}`);
+        usVals.push(+((c / p - 1) * 100).toFixed(1));
+      }
+    } else {
+      const r = this._yoyFromLevels(cpiData, 24);
+      usLabels = r.labels; usVals = r.values;
+    }
+    usLabels = usLabels.slice(-20); usVals = usVals.slice(-20);
 
-    // EU/DE: static reference — Eurostat HICP (updated quarterly via code)
+    // Euro-area & Germany HICP (annual rate %) from ECB, keyed by 'YYYY-MM'
+    const euMap = {}; (free.ecbCpiEu || []).forEach(o => euMap[o.date] = o.value);
+    const deMap = {}; (free.ecbCpiDe || []).forEach(o => deMap[o.date] = o.value);
+
+    // Static fallback only if nothing live at all
     const staticLabels = ['2023-01','2023-04','2023-07','2023-10','2024-01','2024-04','2024-07','2024-10','2025-01','2025-04'];
-    const staticEU  = [8.6, 7.0, 5.3, 2.9, 2.8, 2.4, 2.6, 2.3, 2.4, 2.2];
-    const staticDE  = [8.7, 7.2, 6.2, 3.8, 2.9, 2.2, 2.4, 2.0, 2.2, 2.1];
-    const staticUS  = [6.4, 4.9, 3.2, 3.2, 3.1, 3.4, 2.9, 2.6, 3.0, 2.8];
+    let labels = usLabels.length ? usLabels
+               : (Object.keys(euMap).length ? Object.keys(euMap).sort().slice(-20) : staticLabels);
+    const n = labels.length;
 
-    const useLabels = liveLabels.length ? liveLabels : staticLabels;
-    const useUS     = liveUS.length    ? liveUS     : staticUS;
-    // EU/DE always use static reference data (no free API for Eurozone CPI)
-    const n = useLabels.length;
+    const usData = usVals.length ? usVals : [6.4,4.9,3.2,3.2,3.1,3.4,2.9,2.6,3.0,2.8].slice(-n);
+    const euData = Object.keys(euMap).length ? labels.map(l => euMap[l] ?? null) : [8.6,7.0,5.3,2.9,2.8,2.4,2.6,2.3,2.4,2.2].slice(-n);
+    const deData = Object.keys(deMap).length ? labels.map(l => deMap[l] ?? null) : [8.7,7.2,6.2,3.8,2.9,2.2,2.4,2.0,2.2,2.1].slice(-n);
 
     this.charts.cpi = new Chart(ctx, {
       type: 'line',
-      data: { labels: useLabels, datasets: [
-        { label: liveLabels.length ? 'US CPI (live)' : 'US CPI', data: useUS,
-          borderColor: '#3b82f6', fill: false, tension: 0.3, pointRadius: 2 },
-        { label: 'Eurozone CPI', data: staticEU.slice(-n),
-          borderColor: '#10c980', fill: false, tension: 0.3, pointRadius: 2 },
-        { label: 'DE CPI', data: staticDE.slice(-n),
-          borderColor: '#f59e0b', fill: false, tension: 0.3, pointRadius: 2, borderDash: [3, 3] },
+      data: { labels, datasets: [
+        { label: usVals.length ? 'US CPI (live)' : 'US CPI', data: usData,
+          borderColor: '#3b82f6', fill: false, tension: 0.3, pointRadius: 2, spanGaps: true },
+        { label: 'Eurozone CPI', data: euData,
+          borderColor: '#10c980', fill: false, tension: 0.3, pointRadius: 2, spanGaps: true },
+        { label: 'DE CPI', data: deData,
+          borderColor: '#f59e0b', fill: false, tension: 0.3, pointRadius: 2, borderDash: [3, 3], spanGaps: true },
         { label: '2% Ziel', data: Array(n).fill(2),
           borderColor: 'rgba(239,68,102,.5)', borderDash: [6, 3], pointRadius: 0, fill: false },
       ]},
@@ -401,31 +496,44 @@ class MacroDashboard {
   }
 
   /* ─── GDP Growth Chart ───────────────────────────────────── */
-  renderGDP(gdpData) {
+  renderGDP(gdpData, wbGdp) {
     const ctx = document.getElementById('gdp-chart')?.getContext('2d');
     if (!ctx) return;
     if (this.charts.gdp) { this.charts.gdp.destroy(); this.charts.gdp = null; }
 
-    const { labels: liveLabels, values: liveUS } = this._qoqAnnualized(gdpData, 10);
+    let labels, usData, euData, deData, usLabel = 'USA';
 
-    const fbLabels = ['Q1 23','Q2 23','Q3 23','Q4 23','Q1 24','Q2 24','Q3 24','Q4 24','Q1 25'];
-    const fbUS     = [2.2, 2.1, 4.9, 3.4, 1.6, 3.0, 2.8, 2.4, 1.6];
-    const euData   = [1.2, 0.6, 0.2, 0.2, 0.4, 0.8, 0.9, 0.9, 1.2];
-    const deData   = [-0.4, -0.3, -0.1, -0.3, -0.2, 0.2, 0.1, -0.2, 0.4];
-
-    const useLabels = liveLabels.length ? liveLabels : fbLabels;
-    const useUS     = liveUS.length     ? liveUS     : fbUS;
-    const n = useLabels.length;
+    if (wbGdp?.USA && Object.keys(wbGdp.USA).length) {
+      // World Bank annual GDP growth (live, no key) — auto-rolls forward each year
+      const years = Object.keys(wbGdp.USA).sort().slice(-8);
+      const r1 = v => v != null ? +(+v).toFixed(1) : null;
+      labels = years;
+      usData = years.map(y => r1(wbGdp.USA[y]));
+      euData = years.map(y => r1(wbGdp.EMU?.[y]));
+      deData = years.map(y => r1(wbGdp.DEU?.[y]));
+      usLabel = 'USA (live)';
+    } else {
+      // Fallback: Alpha Vantage quarterly, else static
+      const { labels: liveLabels, values: liveUS } = this._qoqAnnualized(gdpData, 10);
+      const fbLabels = ['Q1 23','Q2 23','Q3 23','Q4 23','Q1 24','Q2 24','Q3 24','Q4 24','Q1 25'];
+      const fbUS     = [2.2, 2.1, 4.9, 3.4, 1.6, 3.0, 2.8, 2.4, 1.6];
+      labels = liveLabels.length ? liveLabels : fbLabels;
+      usData = liveUS.length     ? liveUS     : fbUS;
+      const n = labels.length;
+      euData = [1.2, 0.6, 0.2, 0.2, 0.4, 0.8, 0.9, 0.9, 1.2].slice(-n);
+      deData = [-0.4, -0.3, -0.1, -0.3, -0.2, 0.2, 0.1, -0.2, 0.4].slice(-n);
+      usLabel = liveLabels.length ? 'USA (live)' : 'USA';
+    }
 
     this.charts.gdp = new Chart(ctx, {
       type: 'bar',
-      data: { labels: useLabels, datasets: [
-        { label: liveLabels.length ? 'USA (live)' : 'USA', data: useUS,
-          backgroundColor: useUS.map(v => v >= 0 ? '#3b82f6' : 'rgba(59,130,246,.4)'), borderRadius: 3 },
-        { label: 'Eurozone', data: euData.slice(-n),
-          backgroundColor: euData.slice(-n).map(v => v >= 0 ? '#10c980' : 'rgba(16,201,128,.4)'), borderRadius: 3 },
-        { label: 'Deutschland', data: deData.slice(-n),
-          backgroundColor: deData.slice(-n).map(v => v >= 0 ? '#f59e0b' : 'rgba(245,158,11,.4)'), borderRadius: 3 },
+      data: { labels, datasets: [
+        { label: usLabel, data: usData,
+          backgroundColor: usData.map(v => v >= 0 ? '#3b82f6' : 'rgba(59,130,246,.4)'), borderRadius: 3 },
+        { label: 'Eurozone', data: euData,
+          backgroundColor: euData.map(v => v >= 0 ? '#10c980' : 'rgba(16,201,128,.4)'), borderRadius: 3 },
+        { label: 'Deutschland', data: deData,
+          backgroundColor: deData.map(v => v >= 0 ? '#f59e0b' : 'rgba(245,158,11,.4)'), borderRadius: 3 },
       ]},
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -439,17 +547,36 @@ class MacroDashboard {
   }
 
   /* ─── Labor Market ───────────────────────────────────────── */
-  renderLaborMarket(unemData, nfpData) {
-    const unemRow  = this._latest(unemData);
-    const nfpRows  = this._latest(nfpData, 4);
-    const unem     = unemRow  ? parseFloat(unemRow.value)   : null;
-    const unemDate = unemRow  ? unemRow.date.substring(0, 7) : null;
-    const nfpList  = Array.isArray(nfpRows) ? nfpRows : (nfpRows ? [nfpRows] : []);
-    const latestNFP = nfpList[0] ? parseInt(nfpList[0].value) : null;
-    const nfpDate   = nfpList[0] ? nfpList[0].date.substring(0, 7) : null;
-    const nfpAvg3m  = nfpList.length >= 3
-      ? Math.round(nfpList.slice(0, 3).reduce((s, d) => s + parseInt(d.value), 0) / 3)
-      : null;
+  renderLaborMarket(unemData, nfpData, free = {}) {
+    let unem = null, unemDate = null, latestNFP = null, nfpDate = null, nfpAvg3m = null;
+
+    const bu = free.blsUnemp, bn = free.blsNfp;
+    if (Array.isArray(bu) && bu.length) {
+      // BLS live (no key) — data is latest-first
+      unem = parseFloat(bu[0].value);
+      unemDate = `${bu[0].year}-${bu[0].period.slice(1)}`;
+    } else {
+      const unemRow = this._latest(unemData);
+      unem = unemRow ? parseFloat(unemRow.value) : null;
+      unemDate = unemRow ? unemRow.date.substring(0, 7) : null;
+    }
+
+    if (Array.isArray(bn) && bn.length > 1) {
+      // BLS payroll level (thousands) → month-over-month change in jobs
+      const chg = [];
+      for (let i = 0; i < Math.min(4, bn.length - 1); i++) chg.push(Math.round((+bn[i].value - +bn[i + 1].value) * 1000));
+      latestNFP = chg[0];
+      nfpDate   = `${bn[0].year}-${bn[0].period.slice(1)}`;
+      nfpAvg3m  = chg.length >= 3 ? Math.round((chg[0] + chg[1] + chg[2]) / 3) : null;
+    } else {
+      const nfpRows = this._latest(nfpData, 4);
+      const nfpList = Array.isArray(nfpRows) ? nfpRows : (nfpRows ? [nfpRows] : []);
+      latestNFP = nfpList[0] ? parseInt(nfpList[0].value) : null;
+      nfpDate   = nfpList[0] ? nfpList[0].date.substring(0, 7) : null;
+      nfpAvg3m  = nfpList.length >= 3
+        ? Math.round(nfpList.slice(0, 3).reduce((s, d) => s + parseInt(d.value), 0) / 3)
+        : null;
+    }
 
     const unemColor = unem !== null ? (unem < 4.5 ? 'var(--green)' : unem < 6 ? 'var(--yellow)' : 'var(--red)') : 'var(--text2)';
     const nfpColor  = latestNFP !== null ? (latestNFP > 150000 ? 'var(--green)' : latestNFP > 75000 ? 'var(--yellow)' : 'var(--red)') : 'var(--text2)';
@@ -614,36 +741,31 @@ class MacroDashboard {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Known scheduled events 2026 (FOMC, ECB, CPI, NFP, GDP releases)
-    const events = [
-      // FOMC 2026
-      { date: '2026-06-17', type: 'fomc', label: 'FOMC Entscheidung',      detail: 'Fed Zinsentscheidung + Pressekonferenz',  impact: 'high' },
-      { date: '2026-07-29', type: 'fomc', label: 'FOMC Entscheidung',      detail: 'Fed Zinsentscheidung',                    impact: 'high' },
-      { date: '2026-09-16', type: 'fomc', label: 'FOMC + SEP Projektionen',detail: 'Fed inkl. Dot-Plot & Wirtschaftsaussichten',impact: 'high' },
-      { date: '2026-10-28', type: 'fomc', label: 'FOMC Entscheidung',      detail: 'Fed Zinsentscheidung',                    impact: 'high' },
-      { date: '2026-12-09', type: 'fomc', label: 'FOMC + SEP Projektionen',detail: 'Fed + Dot-Plot',                          impact: 'high' },
-      // ECB 2026
-      { date: '2026-07-24', type: 'ecb',  label: 'EZB Ratssitzung',        detail: 'EZB Leitzinsentscheidung',                impact: 'high' },
-      { date: '2026-09-11', type: 'ecb',  label: 'EZB Ratssitzung',        detail: 'EZB + neue Projektionen',                 impact: 'high' },
-      { date: '2026-10-23', type: 'ecb',  label: 'EZB Ratssitzung',        detail: 'EZB Leitzinsentscheidung',                impact: 'high' },
-      { date: '2026-12-10', type: 'ecb',  label: 'EZB Ratssitzung',        detail: 'EZB + neue Projektionen',                 impact: 'high' },
-      // US CPI (~2. Dienstag des Monats)
-      { date: '2026-07-14', type: 'cpi',  label: 'US CPI Juni 2026',       detail: 'US Verbraucherpreisindex YoY',            impact: 'high' },
-      { date: '2026-08-12', type: 'cpi',  label: 'US CPI Juli 2026',       detail: 'US Verbraucherpreisindex YoY',            impact: 'high' },
-      { date: '2026-09-11', type: 'cpi',  label: 'US CPI August 2026',     detail: 'US Verbraucherpreisindex YoY',            impact: 'high' },
-      // Nonfarm Payrolls (~1. Freitag)
-      { date: '2026-07-02', type: 'nfp',  label: 'NFP Juni 2026',          detail: 'US Arbeitsmarktbericht',                  impact: 'high' },
-      { date: '2026-08-07', type: 'nfp',  label: 'NFP Juli 2026',          detail: 'US Arbeitsmarktbericht',                  impact: 'high' },
-      { date: '2026-09-04', type: 'nfp',  label: 'NFP August 2026',        detail: 'US Arbeitsmarktbericht',                  impact: 'high' },
-      // US GDP
-      { date: '2026-07-30', type: 'gdp',  label: 'US BIP Q2 2026 (1. Est.)',detail: 'GDP Advance Estimate',                   impact: 'medium' },
-      { date: '2026-10-29', type: 'gdp',  label: 'US BIP Q3 2026 (1. Est.)',detail: 'GDP Advance Estimate',                   impact: 'medium' },
-      // Eurozone
-      { date: '2026-06-16', type: 'eu',   label: 'EZ ZEW / Sentix',        detail: 'Eurozone Stimmungsindikatoren',           impact: 'low' },
-      { date: '2026-07-23', type: 'eu',   label: 'EZ PMI Flash',           detail: 'Einkaufsmanagerindex Eurozone',           impact: 'medium' },
-    ].filter(e => new Date(e.date) >= today)
-     .sort((a, b) => a.date.localeCompare(b.date))
-     .slice(0, 10);
+    // Rule-based recurring US releases — generated for the coming months so the
+    // calendar auto-rolls forward forever and never needs manual updates. These
+    // releases follow fixed schedules (NFP = 1st Friday, CPI ≈ 2nd Wednesday,
+    // GDP advance ≈ end of the month after each quarter).
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const monthName    = d => d.toLocaleDateString('de-AT', { month: 'long' });
+    const firstWeekday = (y, m, wd) => { const d = new Date(y, m, 1); while (d.getDay() !== wd) d.setDate(d.getDate() + 1); return d; };
+    const nthWeekday   = (y, m, wd, n) => { const d = firstWeekday(y, m, wd); d.setDate(d.getDate() + 7 * (n - 1)); return d; };
+
+    const generated = [];
+    for (let i = 0; i < 6; i++) {
+      const base = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const y = base.getFullYear(), m = base.getMonth();
+      const reported = monthName(new Date(y, m - 1, 1));   // a release covers the prior month
+      generated.push({ date: iso(firstWeekday(y, m, 5)),   type: 'nfp', label: `NFP ${reported}`,    detail: 'US Arbeitsmarktbericht (Nonfarm Payrolls)', impact: 'high' });
+      generated.push({ date: iso(nthWeekday(y, m, 3, 2)),  type: 'cpi', label: `US CPI ${reported}`, detail: 'US Verbraucherpreisindex (YoY)',            impact: 'high' });
+      if ([0, 3, 6, 9].includes(m)) {
+        const q = ((m + 9) % 12) / 3 + 1;                  // quarter that just ended
+        generated.push({ date: iso(new Date(y, m, 28)), type: 'gdp', label: `US BIP Q${q} (1. Schätzung)`, detail: 'GDP Advance Estimate', impact: 'medium' });
+      }
+    }
+    const events = generated
+      .filter(e => new Date(e.date + 'T00:00:00') >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 10);
 
     const typeColor = { fomc: '#3b82f6', ecb: '#10c980', cpi: '#f59e0b', nfp: '#a78bfa', gdp: '#06c8d8', eu: '#4a6080' };
     const typeIcon  = { fomc: '🏦', ecb: '🇪🇺', cpi: '📊', nfp: '👷', gdp: '📈', eu: '🇦🇹' };

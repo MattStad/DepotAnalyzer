@@ -39,24 +39,25 @@ It's built for someone who holds a mix of ETFs and individual stocks across mult
 - Price chart, company overview, key ratios
 
 ### Macro Dashboard
-All data is live — fetched, cached locally, refreshed on demand.
+All data is live — fetched from free, no-key, official sources, cached locally and refreshed on demand.
 
-| Data | Source | Refresh |
+| Data | Source (free, no key) | Refresh |
 |------|--------|---------|
-| Fed Funds Rate | Alpha Vantage | 24h |
+| Fed Funds Rate (EFFR) | New York Fed | 24h |
 | ECB Deposit Rate | ECB Data API | 24h |
-| US CPI (YoY calculated) | Alpha Vantage | 24h |
-| US GDP (QoQ annualized) | Alpha Vantage | 24h |
-| Unemployment + NFP | Alpha Vantage | 24h |
-| Treasury Yields (3M–30Y) | Alpha Vantage | 4h |
-| WTI / Brent / Gas / Metals | Alpha Vantage | 4h |
-| Gold & Silver (XAU/XAG) | open.er-api.com | 1h |
+| US CPI (YoY) | BLS | 24h |
+| US Unemployment + NFP | BLS | 24h |
+| US / Euro / Germany GDP growth | World Bank | 7d |
+| Euro-area & Germany CPI (HICP) | ECB Data API | 24h |
+| Treasury Yield Curve (3M–30Y) | Yahoo Finance | 4h |
+| WTI / Brent / Gas / Copper / Wheat / Corn | Yahoo Finance (futures) | 4h |
+| Gold & Silver | Yahoo Finance (futures) | 4h |
 | EUR/USD, JPY, GBP, CHF | open.er-api.com | 1h |
 | BTC / ETH | CoinGecko | 1h |
 | Fear & Greed Index | Alternative.me | 1h |
-| Economic Calendar | Built-in (FOMC/ECB/CPI/NFP/GDP dates) | — |
+| Economic Calendar | Rule-based (auto-rolls: NFP/CPI/GDP) | — |
 
-BoE, BoJ, SNB, RBA rates are static reference values (no free CORS-compatible API exists for these).
+Cross-origin requests to Yahoo are routed through public CORS proxies (corsproxy.io, allorigins, …) raced in parallel. **No Alpha Vantage key is required** anymore — if you add one (🔑), it's used only as an extra fallback. BoE, BoJ, SNB, RBA policy rates are labelled reference values (no free CORS API exists for these).
 
 ### Monte Carlo Simulation
 - Simulate future portfolio performance with configurable assumptions
