@@ -1,147 +1,68 @@
-# ◈ DepotAnalyzer
+# DepotAnalyzer
 
-**A privacy-first portfolio analytics tool that runs entirely in your browser — no server, no accounts, no data leaving your machine.**
+A portfolio analyzer that runs completely in the browser. Drop in a broker export and it shows you what's actually inside your portfolio: the real stocks hiding inside your ETFs, where two funds overlap, how your money splits across regions and sectors, plus a live macro dashboard for context.
 
-🔗 **Live Demo:** [https://mattstad.github.io/DepotAnalyzer/](https://mattstad.github.io/DepotAnalyzer/)
+Live version: **https://mattstad.github.io/DepotAnalyzer/**
 
----
+There's no backend and no login. Your portfolio file is parsed locally and never leaves your machine.
+
+## Why I built it
+
+I hold a handful of ETFs plus a few single stocks across a couple of brokers, and I could never get a straight answer to simple questions. How much Apple do I really own once you add up every ETF? Are IWDA and VWCE basically selling me the same thing twice? Is the yield curve still inverted today? Nothing I tried answered those without either an account, a paywall, or a spreadsheet afternoon. So this scratches that itch.
 
 ## What it does
 
-You import your brokerage export (XLS), and the app gives you a deep look at what's actually inside your portfolio — not just tickers and values, but the underlying stocks across all your ETFs, overlap between positions, regional and sector allocation, and live macro context.
+**Portfolio overview.** Import a CSV or Excel export, or several at once and it merges them. ETFs are recognised by ISIN (40-odd funds out of the box), positions are broken down by type, currency, region and sector, and P&L is weighted across the whole depot.
 
-It's built for someone who holds a mix of ETFs and individual stocks across multiple portfolios and wants answers to questions like:
+**ETF overlap.** Every ETF is expanded into its underlying holdings, with a heatmap of which stocks turn up in more than one fund and a ranked list of your portfolio's effective top holdings. Click any holding to jump straight to its research page; that works for commodities too, not just stocks.
 
-- *"I own IWDA and VWRL — what am I actually doubling up on?"*
-- *"What's my real tech exposure once you look inside every ETF?"*
-- *"Is the yield curve still inverted right now?"*
+**Stock research.** Search a ticker, a name, or an ISIN: Apple, Erste Group on the Vienna exchange, whatever. You get a one-year price chart, valuation ratios, the key balance-sheet figures and a peer comparison. All live, no key.
 
----
+**Macro dashboard.** Central bank rates, inflation, GDP growth, the US yield curve, commodities, FX, crypto and a sentiment gauge, plus a rolling economic calendar. Sources are listed further down.
 
-## Features
+**Monte Carlo.** Project the portfolio forward with adjustable return, volatility and horizon, drawn as a percentile fan chart.
 
-### Portfolio Analysis
-- Import XLS files exported from your broker (comdirect, DKB, ING, Flatex, …)
-- Combine multiple portfolios and view them side-by-side or merged
-- Automatic ETF detection by ISIN — recognises 40+ ETFs out of the box
-- Position breakdown by asset type, currency, region, and sector
-- Color-coded gain/loss with weighted P&L
+## Running it
 
-### ETF Overlap Matrix
-- Expands every ETF into its actual holdings (top 25 positions)
-- Visual heatmap showing which individual stocks appear across multiple ETFs
-- Detects commodity ETFs separately (shows "Komponenten" not "Aktien")
-- Effective top holdings ranked by total weight in your portfolio
+Use the hosted version above, or serve the folder yourself.
 
-### Stock Research
-- Search any ticker for fundamental data via Alpha Vantage
-- Real insider transactions from the SEC (no mock data — if there's nothing, it says so)
-- Price chart, company overview, key ratios
+One thing to watch: don't just double-click `index.html`. Opened that way it runs as a `file://` page, the browser reports the origin as `null`, and the free data proxies refuse it so nothing loads. It has to be served over `http`.
 
-### Macro Dashboard
-All data is live — fetched from free, no-key, official sources, cached locally and refreshed on demand.
+On Windows the easiest path is to double-click `start.bat` — it starts a small Python (or Node) web server and opens the app at `http://localhost:8765`. Leave that little server window open while you use it. On macOS or Linux, run `python -m http.server 8765` in the project folder and open the same address.
 
-| Data | Source (free, no key) | Refresh |
-|------|--------|---------|
-| Fed Funds Rate (EFFR) | New York Fed | 24h |
-| ECB Deposit Rate | ECB Data API | 24h |
-| US CPI (YoY) | BLS | 24h |
-| US Unemployment + NFP | BLS | 24h |
-| US / Euro / Germany GDP growth | World Bank | 7d |
-| Euro-area & Germany CPI (HICP) | ECB Data API | 24h |
-| Treasury Yield Curve (3M–30Y) | Yahoo Finance | 4h |
-| WTI / Brent / Gas / Copper / Wheat / Corn | Yahoo Finance (futures) | 4h |
-| Gold & Silver | Yahoo Finance (futures) | 4h |
-| EUR/USD, JPY, GBP, CHF | open.er-api.com | 1h |
-| BTC / ETH | CoinGecko | 1h |
-| Fear & Greed Index | Alternative.me | 1h |
-| Economic Calendar | Rule-based (auto-rolls: NFP/CPI/GDP) | — |
+To load a portfolio, export it from your broker (the securities / Wertpapierdepot export) and drop the file onto the page. Tested with comdirect, ING, DKB, Flatex and Trade Republic; anything else falls back to a generic CSV importer with a column-mapping step.
 
-Cross-origin requests to Yahoo are routed through public CORS proxies (corsproxy.io, allorigins, …) raced in parallel. **No Alpha Vantage key is required** anymore — if you add one (🔑), it's used only as an extra fallback. BoE, BoJ, SNB, RBA policy rates are labelled reference values (no free CORS API exists for these).
+## Where the data comes from
 
-### Monte Carlo Simulation
-- Simulate future portfolio performance with configurable assumptions
-- Adjustable expected return, volatility, time horizon, and number of paths
-- Percentile fan chart (5th / 25th / 50th / 75th / 95th)
+No keys, no accounts. Everything is fetched live from free, official sources and cached in the browser so a normal visit stays light:
 
----
+- Prices, charts, fundamentals, commodities, the yield curve and the top ticker — Yahoo Finance
+- Fed funds rate — New York Fed
+- US inflation, unemployment and payrolls — Bureau of Labor Statistics
+- Euro-area and German inflation, and the ECB rate — European Central Bank
+- GDP growth for the US, euro area and Germany — World Bank
+- Exchange rates from open.er-api.com, crypto from CoinGecko, market sentiment from Alternative.me
 
-## Getting started
+Yahoo doesn't send CORS headers, so those calls are routed through a few public CORS proxies tried in parallel — whichever answers first wins. The Bank of England, Japan, Switzerland and Australia policy rates are the only figures left as static references; there's no free feed for them a browser can reach directly.
 
-### Running it
+## How it's built
 
-Use the [GitHub Pages link](https://mattstad.github.io/DepotAnalyzer/), or run it locally.
-
-> **Important — don't double-click `index.html`.** That loads the page via `file://`, where the browser reports a `null` origin and the free CORS proxies used for live market data reject the request — so prices and charts won't load. The app must be served over `http://`.
-
-**Local (Windows):** double-click **`start.bat`** — it starts a tiny local web server (Python or Node) and opens the app at `http://localhost:8765`. Leave the small server window open while you use the app.
-
-**Local (any OS):** from the project folder run `python -m http.server 8765` (or `npx serve`), then open `http://localhost:8765`.
-
-### Live data — free, no API key
-
-Stock Research and the market ticker pull live data from **Yahoo Finance** through free public CORS proxies — no account, no API key. An Alpha Vantage key is **optional**: if you add one (🔑 icon), Stock Research is additionally enriched with detailed fundamentals (P/E, margins, analyst ratings). Without it you still get real prices, charts and 52-week ranges.
-
-### Importing your portfolio
-
-1. Export your portfolio from your broker as XLS (securities export / Wertpapierdepot-Export)
-2. Click **Portfolio importieren** in the sidebar
-3. Load one or multiple files — the app merges them automatically
-
-Tested with exports from: comdirect, ING, DKB, Flatex.
-
----
-
-## Tech stack
-
-Vanilla JS, zero build step, zero dependencies beyond what's loaded from CDN.
+Plain JavaScript, no framework, no build step. The only things pulled from a CDN are Chart.js for the charts, SheetJS for reading Excel files, Font Awesome, and the fonts.
 
 ```
-index.html          — single-page shell, all navigation in JS
-css/app.css         — dark theme, CSS custom properties
-js/app.js           — routing, topbar ticker, market clock
-js/portfolio.js     — XLS parsing, portfolio state, P&L calculations
-js/etf.js           — ETF overlap engine, holding detection
-js/etf-data.js      — ETF database (ISIN, holdings, regions, sectors)
-js/research.js      — Alpha Vantage stock research + insider transactions
-js/macro.js         — Live macro dashboard, all API fetching and caching
-js/montecarlo.js    — Monte Carlo simulation engine
+index.html       layout and markup
+css/app.css      styling
+js/app.js        navigation, top ticker, clock
+js/portfolio.js  file parsing, P&L, allocation
+js/etf.js        overlap engine
+js/etf-data.js   the ETF database
+js/research.js   stock research
+js/macro.js      macro dashboard
+js/montecarlo.js simulation
 ```
 
-**Runtime dependencies (CDN):**
-- [Chart.js 4.4.4](https://www.chartjs.org/) — all charts
-- [SheetJS (xlsx)](https://sheetjs.com/) — XLS/XLSX parsing in browser
-- [Font Awesome 6](https://fontawesome.com/) — icons
-- [Inter](https://rsms.me/inter/) + [JetBrains Mono](https://www.jetbrains.com/leemons/) — fonts
-
----
-
-## ETF Database
-
-The app ships with data for 40+ ETFs. Detection works by ISIN first, with name-matching as fallback. Currently includes:
-
-**World / Developed Markets:** IWDA, VWRL, SWRD, HMWO, XMWD, LCUW, ISAC, SPYD  
-**Emerging Markets:** EIMI, PAEEM, IS3C, MEUD  
-**Factor:** IWSZ, WSML, ZPRV, ZPRX, IUSV, IUSQ  
-**US / S&P 500:** CSPX, SXR8, VUAA, VUSA, IVV  
-**Sectors:** IUIT, QDVE, CNDX, HLTW, IUCM  
-**Bonds:** IBCI, IEAG, VGEA, SLXX  
-**Commodities:** ICOM, SPPW, AIGI  
-**Thematic / Other:** QCLN, RBOT, IFSW, WTEF
-
-To add an ETF: add an entry to `js/etf-data.js` with ISIN, TER, AUM, top holdings (by ticker + weight), region split, and sector split.
-
----
-
-## Privacy
-
-- No backend, no telemetry, no cookies
-- Your portfolio data never leaves the browser
-- API calls go directly from your browser to Alpha Vantage / ECB / open.er-api.com
-- Everything is stored in `localStorage` — clearing browser data clears everything
-
----
+ETFs are matched by ISIN first and by name as a fallback, covering world and developed-market funds, emerging markets, factor and sector ETFs, S&P 500 trackers, bonds, commodities and a few thematics. Adding one is a single entry in `js/etf-data.js` — ISIN, TER, the top holdings with weights, and the region and sector splits.
 
 ## License
 
-MIT — do whatever you want with it.
+MIT. Do what you like with it.
