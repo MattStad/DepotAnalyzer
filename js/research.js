@@ -206,6 +206,11 @@ class StockResearch {
      crumb/key (unlike quoteSummary). Returns the latest value per metric so we can
      compute P/E, P/B, market cap, ROE, ROA, margins, debt/equity etc. for free. */
   async _fetchYahooFundamentals(yhTicker) {
+    // Cache 6 h in localStorage — fundamentals change quarterly at most, and this
+    // cuts repeat proxy calls (reliability: avoids hitting free-proxy rate limits).
+    const ck = 'res_fund_' + yhTicker;
+    try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.t < 21_600_000) return c.f; } catch {}
+
     const now = Math.floor(Date.now() / 1000);
     const p1  = now - 800 * 24 * 3600;   // ~2 years back to capture the latest fiscal year
     const types = [
@@ -232,7 +237,9 @@ class StockResearch {
       const last = Array.isArray(arr) ? arr.filter(Boolean).pop() : null;
       if (last?.reportedValue?.raw != null) f[type] = last.reportedValue.raw;
     }
-    return Object.keys(f).length ? f : null;
+    const result = Object.keys(f).length ? f : null;
+    if (result) { try { localStorage.setItem(ck, JSON.stringify({ t: Date.now(), f: result })); } catch {} }
+    return result;
   }
 
   renderYahooChart(result) {
@@ -353,13 +360,8 @@ class StockResearch {
       { label: 'Div Yield',     val: divYld != null ? fpct(divYld) : NA },
     ].map(m => `<div class="metric-item"><div class="metric-label">${m.label}</div><div class="metric-value">${m.val}</div></div>`).join('');
 
-    // Analyst — Yahoo's analyst data is crumb-locked; needs optional AV key
-    document.getElementById('analyst-block').innerHTML =
-      `<div style="color:var(--text3);font-size:12px;padding:10px 0;line-height:1.6">
-         Analystenbewertungen & Kursziele sind nur mit einem (kostenlosen)
-         <strong style="color:var(--text2)">Alpha-Vantage-Key</strong> verfügbar (Einstellungen → 🔑).<br>
-         <span style="color:var(--accent-cyan)">Preis, Chart, Kennzahlen & Bilanz sind live.</span>
-       </div>`;
+    // (Analyst Consensus panel removed — Yahoo analyst data is crumb-locked and
+    //  there is no free source; renderAnalystRatings null-guards the missing block.)
 
     // Price targets — real current price + 52W range (no analyst target without a key)
     this.renderPriceTargets({ low: lo52 || 0, high: hi52 || 0, target: 0, current: cur, ccy });
@@ -455,7 +457,6 @@ class StockResearch {
     const spinner = '<div style="grid-column:1/-1;color:var(--text3);font-size:13px;padding:14px">⏳ lädt …</div>';
     document.getElementById('valuation-grid').innerHTML = spinner;
     document.getElementById('financials-grid').innerHTML = '';
-    document.getElementById('analyst-block').innerHTML = '';
     document.getElementById('price-target-block').innerHTML = '';
   }
 
@@ -482,7 +483,6 @@ class StockResearch {
       </div>`;
     document.getElementById('valuation-grid').innerHTML = msg;
     document.getElementById('financials-grid').innerHTML = '';
-    document.getElementById('analyst-block').innerHTML = '';
     document.getElementById('price-target-block').innerHTML = '';
     if (this.priceChart) { this.priceChart.destroy(); this.priceChart = null; }
     if (this.peerChart)  { this.peerChart.destroy();  this.peerChart  = null; }
@@ -673,6 +673,8 @@ class StockResearch {
   }
 
   renderAnalystRatings(counts) {
+    const block = document.getElementById('analyst-block');
+    if (!block) return;   // Analyst Consensus panel was removed (no free data source)
     const total = Object.values(counts).reduce((s,v) => s + v, 0) || 1;
     const bullish = (counts.strongBuy + counts.buy) / total;
     const consensus = bullish > 0.6 ? 'BUY' : bullish > 0.4 ? 'HOLD' : 'SELL';
@@ -686,7 +688,7 @@ class StockResearch {
       { label: 'Strong Sell',count: counts.strongSell,color: '#ef4466' },
     ];
 
-    document.getElementById('analyst-block').innerHTML = `
+    block.innerHTML = `
       <div class="analyst-wrapper">
         <span class="consensus-badge ${cls}">${consensus}</span>
         <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${total} analyst${total!==1?'s':''}</div>

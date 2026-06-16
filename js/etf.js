@@ -586,8 +586,10 @@ class ETFAnalyzer {
         ? `<span class="badge-red badge" style="font-size:9px">${h.overlapCount}×</span>`
         : `<span class="badge-green badge" style="font-size:9px">1×</span>`;
       const rowStyle = h.overlapCount > 2 ? 'background:rgba(239,68,102,.06)' : h.overlapCount > 1 ? 'background:rgba(245,158,11,.04)' : '';
+      const tkAttr = esc(h.ticker).replace(/'/g, "\\'");
       return `<tr style="${rowStyle}">
-        <td class="name-cell"><strong>${esc(h.ticker)}</strong></td>
+        <td class="name-cell"><strong class="ticker-link" style="cursor:pointer;color:var(--accent-cyan)"
+            onclick="etfAnalyzer.researchHolding('${tkAttr}')" title="Im Stock Research öffnen">${esc(h.ticker)}</strong></td>
         <td>${h.etfs.map(t => `<span class="badge badge-blue" style="margin-right:3px">${t}</span>`).join('')}</td>
         <td class="num">${overlapBadge}</td>
         <td>${esc(h.sector)}</td>
@@ -597,7 +599,33 @@ class ETFAnalyzer {
       </tr>`;
     }).join('');
   }
+
+  /* Open a holding (stock OR commodity component) in Stock Research.
+     Commodity names like "Gold (GC)" are mapped to their Yahoo futures symbol;
+     plain stock tickers are passed straight through. */
+  researchHolding(raw) {
+    let query = raw;
+    const m = raw.match(/\(([^)]+)\)\s*$/);          // commodity code in parentheses
+    if (m && COMMODITY_YH[m[1].trim()]) {
+      query = COMMODITY_YH[m[1].trim()];
+    } else if (COMMODITY_YH[raw]) {                   // e.g. "HRW Wheat"
+      query = COMMODITY_YH[raw];
+    }
+    if (typeof app !== 'undefined') app.navigate('research');
+    const input = document.getElementById('stock-search');
+    if (input) input.value = query;
+    if (typeof research !== 'undefined') research.search(query);
+  }
 }
+
+/* Commodity component → Yahoo Finance futures symbol (for research click-through) */
+const COMMODITY_YH = {
+  'GC': 'GC=F', 'SI': 'SI=F', 'CL': 'CL=F', 'CO': 'BZ=F', 'NG': 'NG=F',
+  'HG': 'HG=F', 'S': 'ZS=F', 'C': 'ZC=F', 'W': 'ZW=F', 'KW': 'KE=F',
+  'BO': 'ZL=F', 'SM': 'ZM=F', 'SB': 'SB=F', 'KC': 'KC=F', 'CT': 'CT=F',
+  'CC': 'CC=F', 'LC': 'LE=F', 'LH': 'HE=F', 'LA': 'ALI=F',
+  'HRW Wheat': 'KE=F',
+};
 
 /* ── Shared stock metadata maps (used by ETF detail views) ── */
 const COMMODITY_TICKERS = new Set([
