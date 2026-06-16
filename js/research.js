@@ -115,9 +115,10 @@ class StockResearch {
     document.addEventListener('click', e => {
       if (!e.target.closest('.search-bar-hero')) this._closeSuggestions();
     });
-    // Restore saved API key
+    // Restore saved API key (input only exists if the optional key UI is present)
     const saved = localStorage.getItem('av_key');
-    if (saved) document.getElementById('av-key-input').value = saved;
+    const keyInput = document.getElementById('av-key-input');
+    if (saved && keyInput) keyInput.value = saved;
   }
 
   _closeSuggestions() {

@@ -176,38 +176,16 @@ class App {
   }
 
   initSettings() {
-    document.getElementById('save-av-btn').addEventListener('click', () => {
+    // Alpha Vantage key UI was removed — everything runs on free, no-key sources.
+    // Kept as a guarded no-op so a stored key (if any) still works silently.
+    const saveBtn = document.getElementById('save-av-btn');
+    if (!saveBtn) return;
+    saveBtn.addEventListener('click', () => {
       const key = document.getElementById('av-key-input').value.trim();
       if (key) {
         localStorage.setItem('av_key', key);
         showToast('API key saved', 'success');
         this.checkApiKey();
-      }
-    });
-
-    document.getElementById('test-av-btn').addEventListener('click', async () => {
-      const key = document.getElementById('av-key-input').value.trim();
-      if (!key) { showToast('Enter a key first', 'error'); return; }
-      const btn = document.getElementById('test-av-btn');
-      btn.disabled = true; btn.textContent = 'Testing…';
-      try {
-        const res = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${key}`);
-        const d   = await res.json();
-        if (d['Global Quote']?.['05. price']) {
-          document.getElementById('av-test-result').innerHTML =
-            `<span class="green">✓ Connected — AAPL: $${parseFloat(d['Global Quote']['05. price']).toFixed(2)}</span>`;
-          localStorage.setItem('av_key', key);
-          this.checkApiKey();
-        } else if (d.Note || d.Information) {
-          document.getElementById('av-test-result').innerHTML = `<span class="red">Rate limited — wait 1 min and retry</span>`;
-        } else {
-          document.getElementById('av-test-result').innerHTML = `<span class="red">Invalid key or no response</span>`;
-        }
-      } catch {
-        document.getElementById('av-test-result').innerHTML = `<span class="red">Network error</span>`;
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-plug"></i> Test';
       }
     });
   }

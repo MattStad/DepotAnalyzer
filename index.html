@@ -541,43 +541,11 @@
 
       <div class="settings-layout">
         <div class="card">
-          <div class="card-header"><h3>🔓 Kein API-Key nötig</h3><span class="badge badge-green">Out of the box</span></div>
-          <div class="card-body">
-            <p class="text-muted mb-12">Kurse, Charts, Kennzahlen, Bilanzdaten und das komplette Makro-Dashboard
-              werden live aus freien, offiziellen Quellen geladen — ohne Anmeldung, ohne Schlüssel:
-              <strong>Yahoo Finance</strong>, <strong>NY Fed</strong>, <strong>BLS</strong>,
-              <strong>ECB</strong>, <strong>World Bank</strong>, <strong>CoinGecko</strong>.</p>
-            <p class="text-muted" style="margin:0">⚠ Wichtig: Die App muss über <code>http(s)://</code> laufen
-              (lokaler Server via <code>start.bat</code> oder GitHub&nbsp;Pages) — <strong>nicht</strong> per
-              Doppelklick auf <code>index.html</code> (<code>file://</code>), sonst blocken die CORS-Proxys.</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3>Alpha Vantage API <span style="font-weight:400;color:var(--text3);font-size:12px">(optional)</span></h3><span class="badge badge-blue">Optional</span></div>
-          <div class="card-body">
-            <p class="text-muted mb-12">Nur für <strong>Analysten-Ratings, Kursziele und Insider-Transaktionen</strong>
-              im Stock&nbsp;Research — alles andere funktioniert ohne Key.
-              <a href="https://www.alphavantage.co/support/#api-key" target="_blank" class="link">Gratis-Key holen →</a></p>
-            <div class="form-group">
-              <label>API Key</label>
-              <input type="text" id="av-key-input" class="form-input" placeholder="z.B. ABC123DEF456…">
-            </div>
-            <div class="btn-row">
-              <button class="btn btn-primary" id="save-av-btn"><i class="fas fa-save"></i> Speichern</button>
-              <button class="btn btn-ghost" id="test-av-btn"><i class="fas fa-plug"></i> Testen</button>
-            </div>
-            <div id="av-test-result" class="mt-8"></div>
-          </div>
-        </div>
-
-        <div class="card">
           <div class="card-header"><h3>Datenquellen</h3></div>
           <div class="card-body">
             <div class="source-row"><div><strong>Portfolio-Analyse</strong><div class="text-muted">Client-seitig — immer aktiv</div></div><span class="badge badge-green">Aktiv</span></div>
             <div class="source-row"><div><strong>ETF-Overlap-Datenbank</strong><div class="text-muted">Eingebaut (40+ ETFs)</div></div><span class="badge badge-green">Aktiv</span></div>
             <div class="source-row"><div><strong>Stock Research</strong><div class="text-muted">Yahoo Finance — Kurse, Charts, Kennzahlen (kein Key)</div></div><span class="badge badge-green">Live</span></div>
-            <div class="source-row"><div><strong>Analysten-Ratings &amp; Insider</strong><div class="text-muted">Alpha Vantage — nur mit optionalem Key</div></div><span id="av-status-indicator" class="badge badge-blue">Optional</span></div>
             <div class="source-row"><div><strong>Marktticker &amp; Makro</strong><div class="text-muted">NY Fed · BLS · ECB · World Bank · Yahoo · CoinGecko (kein Key)</div></div><span class="badge badge-green">Live</span></div>
             <div class="source-row"><div><strong>Monte Carlo</strong><div class="text-muted">Client-seitige GBM-Engine</div></div><span class="badge badge-green">Aktiv</span></div>
           </div>
