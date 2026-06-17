@@ -27,10 +27,16 @@ class App {
         this.navigate(el.dataset.section);
       });
     });
+
+    // Mobile sidebar drawer
+    const closeDrawer = () => document.body.classList.remove('sidebar-open');
+    document.getElementById('sidebar-toggle')?.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+    document.getElementById('sidebar-overlay')?.addEventListener('click', closeDrawer);
   }
 
   navigate(section) {
     this.currentSection = section;
+    document.body.classList.remove('sidebar-open');   // close mobile drawer on navigation
 
     document.querySelectorAll('.section').forEach(s => {
       const show = s.id === `section-${section}`;

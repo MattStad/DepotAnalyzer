@@ -382,6 +382,52 @@ const ETF_DB = {
     },
     regions: { "United States":66.8,"Europe":26.4,"Other":6.8 },
     sectors: { "Industrials":72.4,"Technology":18.8,"Consumer Disc":8.8 }
+  },
+
+  /* ── Thematic ETFs ── */
+
+  "SEMI": {
+    name: "Invesco Semiconductors UCITS ETF", isin: "",
+    ter: 0.35, aum: 1200, currency: "USD",
+    description: "Halbleiter-Index — die größten globalen Chip-Hersteller und -Ausrüster",
+    holdings: {
+      "NVDA":10.4,"AVGO":8.2,"AMD":6.1,"TXN":5.2,"QCOM":4.8,
+      "AMAT":4.6,"MU":4.4,"LRCX":4.1,"ADI":3.9,"KLAC":3.7,
+      "NXPI":3.4,"MCHP":3.1,"MRVL":2.9,"INTC":2.8,"ON":2.4,
+      "ASML":2.6,"2330.TW":2.5,"SNPS":2.3,"CDNS":2.1,"TER":1.8,
+      "SWKS":1.6,"MPWR":1.5,"QRVO":1.2,"STM":1.1,"ENTG":1.0
+    },
+    regions: { "United States":80.4,"Taiwan":6.2,"Europe":7.8,"Other":5.6 },
+    sectors: { "Technology":100 }
+  },
+
+  "NUCL": {
+    name: "VanEck Uranium and Nuclear Technologies UCITS ETF", isin: "",
+    ter: 0.55, aum: 900, currency: "USD",
+    description: "MarketVector Global Uranium & Nuclear Energy — Versorger, Uranminen und Nukleartechnik",
+    holdings: {
+      "CEG":8.4,"CCJ":7.9,"VST":6.8,"PEG":5.4,"BWXT":4.8,
+      "D":4.2,"DUK":4.0,"SO":3.8,"EXC":3.4,"AEP":3.1,
+      "KAP.IL":3.6,"UEC":2.9,"NXE":2.6,"DNN":2.2,"PDN.AX":2.4,
+      "9501.T":2.8,"9503.T":2.1,"OKLO":2.0,"SMR":2.3,"LEU":1.9,
+      "LTBR":1.2,"UUUU":1.4,"URG":0.9,"BWLPG":0.8,"PALAF":0.7
+    },
+    regions: { "United States":54.8,"Canada":13.4,"Japan":8.2,"Australia":6.4,"Kazakhstan":5.8,"Other":11.4 },
+    sectors: { "Utilities":52.4,"Energy":24.8,"Materials":12.4,"Industrials":10.4 }
+  },
+
+  "CNXT": {
+    name: "VanEck ChiNext Innovators UCITS ETF", isin: "",
+    ter: 0.65, aum: 400, currency: "USD",
+    description: "ChiNext-Index (Shenzhen) — chinesische Wachstums- und Innovationsunternehmen",
+    holdings: {
+      "300750.SZ":18.2,"300059.SZ":7.4,"300760.SZ":5.8,"300274.SZ":4.6,"300124.SZ":4.1,
+      "300014.SZ":3.8,"300498.SZ":3.4,"300782.SZ":2.9,"300999.SZ":2.7,"301269.SZ":2.4,
+      "300347.SZ":2.2,"300450.SZ":2.1,"300661.SZ":1.9,"300433.SZ":1.8,"300316.SZ":1.7,
+      "300122.SZ":1.6,"300142.SZ":1.5,"300628.SZ":1.4,"300896.SZ":1.3,"300979.SZ":1.2
+    },
+    regions: { "China":100 },
+    sectors: { "Technology":34.2,"Industrials":22.8,"Healthcare":14.4,"Consumer Disc":12.6,"Materials":8.4,"Communication":7.6 }
   }
 };
 

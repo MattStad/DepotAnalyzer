@@ -173,10 +173,19 @@ class ETFAnalyzer {
       const byIsin = Object.keys(ETF_DB).find(k => ETF_DB[k].isin === up);
       if (byIsin) return byIsin;
     }
-    const low = input.trim().toLowerCase();
-    if (low.length >= 4) {
-      const byName = Object.keys(ETF_DB).find(k => (ETF_DB[k].name || '').toLowerCase().includes(low));
-      if (byName) return byName;
+    // Token-overlap match against fund names (handles "… ETF" vs "… UCITS ETF" etc.)
+    const STOP = new Set(['etf','ucits','the','and','core','index','fund','dist','acc','usd','eur','plc','technologies','1c','1d']);
+    const toks = s => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+    const inToks = toks(input);
+    if (inToks.length) {
+      let best = null, bestScore = 0;
+      for (const k of Object.keys(ETF_DB)) {
+        const nameToks = new Set(toks(ETF_DB[k].name));
+        const shared = inToks.filter(w => nameToks.has(w)).length;
+        const score = shared / inToks.length;
+        if (shared >= 2 && score > bestScore) { bestScore = score; best = k; }
+      }
+      if (best && bestScore >= 0.5) return best;
     }
     return null;
   }
@@ -713,6 +722,9 @@ class ETFAnalyzer {
 /* Map an ETF name/keyword to a built-in fund that tracks the same index, so a
    user-added ETF can borrow that index's composition (ordered: specific first). */
 const INDEX_PROXIES = [
+  [/semiconduct|halbleiter|\bchips?\b|\bsox\b/i, 'SEMI'],
+  [/uran|nuclear|nuklear|kernkraft|atom/i, 'NUCL'],
+  [/chinext|shenzhen|china.*(innovat|growth|tech|wachstum)/i, 'CNXT'],
   [/all[\s-]?(country[\s-]?)?world|ftse[\s-]?all|\bacwi\b/i, 'VWCE'],
   [/small[\s-]?cap/i, 'IUSN'],
   [/(world|welt).*(info|technolog|\bit\b|nasdaq)|nasdaq[\s-]?100/i, 'XDWT'],
@@ -806,7 +818,17 @@ const STOCK_SECTOR_MAP = {
   // DFNS — additional defence
   'TXT':'Industrials','HEICO':'Industrials','HWM':'Industrials','AXON':'Technology','KTOS':'Industrials',
   'MOOG':'Industrials','DRS':'Industrials','CACI':'Technology','SAIC':'Technology',
-  'AVAV':'Industrials','LEI.PA':'Industrials','DASSAULT':'Industrials'
+  'AVAV':'Industrials','LEI.PA':'Industrials','DASSAULT':'Industrials',
+  // SEMI — semiconductors
+  'ADI':'Technology','KLAC':'Technology','NXPI':'Technology','MCHP':'Technology','MRVL':'Technology',
+  'INTC':'Technology','ON':'Technology','TER':'Technology','SWKS':'Technology','MPWR':'Technology',
+  'QRVO':'Technology','STM':'Technology','ENTG':'Technology',
+  // NUCL — uranium & nuclear (utilities + miners)
+  'CEG':'Utilities','VST':'Utilities','PEG':'Utilities','D':'Utilities','DUK':'Utilities','SO':'Utilities',
+  'EXC':'Utilities','AEP':'Utilities','9501.T':'Utilities','9503.T':'Utilities',
+  'CCJ':'Materials','KAP.IL':'Materials','UEC':'Materials','NXE':'Materials','DNN':'Materials',
+  'PDN.AX':'Materials','UUUU':'Materials','URG':'Materials',
+  'BWXT':'Industrials','OKLO':'Industrials','SMR':'Industrials','LEU':'Industrials','LTBR':'Industrials'
 };
 const STOCK_COUNTRY_MAP = {
   'AAPL':'US','MSFT':'US','NVDA':'US','AMZN':'US','META':'US','GOOGL':'US','GOOG':'US','AVGO':'US',
@@ -847,6 +869,18 @@ const STOCK_COUNTRY_MAP = {
   // DFNS defence
   'TXT':'US','HEICO':'US','HWM':'US','AXON':'US','KTOS':'US','MOOG':'US',
   'DRS':'US','CACI':'US','SAIC':'US','AVAV':'US','LEI.PA':'FR','DASSAULT':'FR',
+  // SEMI semiconductors
+  'ADI':'US','KLAC':'US','NXPI':'NL','MCHP':'US','MRVL':'US','INTC':'US','ON':'US','TER':'US',
+  'SWKS':'US','MPWR':'US','QRVO':'US','STM':'CH','ENTG':'US',
+  // NUCL uranium & nuclear
+  'CEG':'US','VST':'US','PEG':'US','D':'US','DUK':'US','SO':'US','EXC':'US','AEP':'US',
+  '9501.T':'JP','9503.T':'JP','CCJ':'CA','KAP.IL':'KZ','UEC':'US','NXE':'CA','DNN':'CA',
+  'PDN.AX':'AU','UUUU':'US','URG':'US','BWXT':'US','OKLO':'US','SMR':'US','LEU':'US','LTBR':'US',
+  // CNXT ChiNext (Shenzhen)
+  '300750.SZ':'CN','300059.SZ':'CN','300760.SZ':'CN','300274.SZ':'CN','300124.SZ':'CN',
+  '300014.SZ':'CN','300498.SZ':'CN','300782.SZ':'CN','300999.SZ':'CN','301269.SZ':'CN',
+  '300347.SZ':'CN','300450.SZ':'CN','300661.SZ':'CN','300433.SZ':'CN','300316.SZ':'CN',
+  '300122.SZ':'CN','300142.SZ':'CN','300628.SZ':'CN','300896.SZ':'CN','300979.SZ':'CN',
   // Commodity futures — global markets
   'Gold (GC)':'Global','Silber (SI)':'Global','Rohöl WTI (CL)':'Global',
   'Brent Crude (CO)':'Global','Erdgas (NG)':'Global','Kupfer (HG)':'Global',
