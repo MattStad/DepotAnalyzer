@@ -12,16 +12,19 @@ class ETFAnalyzer {
   }
 
   init() {
-    const sel = document.getElementById('add-etf-select');
-    ETF_LIST.forEach(e => {
+    // Suggestions for the free-text add field (you can also type any ETF/ISIN/name)
+    const dl = document.getElementById('etf-datalist');
+    if (dl) ETF_LIST.forEach(e => {
       const opt = document.createElement('option');
       opt.value = e.ticker;
-      opt.textContent = `${e.ticker} — ${e.name}`;
-      sel.appendChild(opt);
+      opt.label = e.name;
+      dl.appendChild(opt);
     });
-    sel.addEventListener('change', () => {
-      if (sel.value) { this.addETF(sel.value); sel.value = ''; }
-    });
+    const input  = document.getElementById('add-etf-input');
+    const addBtn = document.getElementById('add-etf-btn');
+    const doAdd  = () => { const v = (input?.value || '').trim(); if (v) this.addCustomETF(v); };
+    addBtn?.addEventListener('click', doAdd);
+    input?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
 
     // Wire up sortable holdings table headers
     document.getElementById('holdings-sort-header')?.addEventListener('click', e => {
@@ -107,6 +110,80 @@ class ETFAnalyzer {
     [this.exposureChart, this.sectorChart, this.sectorBreakdownChart].forEach(c => c && c.destroy());
     this.exposureChart = this.sectorChart = this.sectorBreakdownChart = null;
     this.render();
+  }
+
+  /* Add any ETF — not just the built-in ones. If it's known (by ticker/ISIN/name)
+     we use its real composition; otherwise we detect the index it tracks (from the
+     ticker's Yahoo name or the typed text) and reuse that index's holdings, since
+     same-index ETFs are essentially identical. Holdings themselves are not available
+     for free per fund, so this index-proxy keeps the overlap analysis meaningful. */
+  async addCustomETF(raw) {
+    const input = (raw || '').trim();
+    if (!input) return;
+
+    // 1. Already a known fund (ticker, ISIN, or name)?
+    const known = this._resolveKnownETF(input);
+    if (known) {
+      if (this.selected.includes(known)) showToast(`${known} ist bereits hinzugefügt`, 'info');
+      else this.addETF(known);
+      this._clearAddField();
+      return;
+    }
+
+    // 2. Unknown fund — figure out which index it tracks
+    let name = input;
+    let idx  = this._detectIndex(input);
+    const isIsin = /^[A-Z]{2}[A-Z0-9]{10}$/i.test(input);
+    if (!idx && !isIsin && /^[A-Z0-9.\-]{1,12}$/i.test(input) && typeof research !== 'undefined') {
+      try {
+        const chart = await research._fetchYahooChart(research._toYahooTicker(input.toUpperCase()));
+        if (chart?.meta?.longName) { name = chart.meta.longName; idx = this._detectIndex(name); }
+      } catch { /* offline / not found */ }
+    }
+
+    if (!idx) {
+      showToast('ETF nicht erkannt. Tipp: Index im Namen angeben, z.B. „MSCI World", „S&P 500", „Emerging Markets".', 'error');
+      return;
+    }
+
+    // 3. Clone the index composition under a custom key
+    const base = ETF_DB[idx];
+    let key = input.toUpperCase().replace(/[^A-Z0-9.]/g, '').slice(0, 12) || ('ETF' + Date.now());
+    if (ETF_DB[key] && !ETF_DB[key]._proxyOf) key += '*';   // don't overwrite a real entry
+    ETF_DB[key] = {
+      name, isin: isIsin ? input.toUpperCase() : '',
+      ter: base.ter, aum: base.aum, currency: base.currency,
+      description: `Benutzerdefiniert · Zusammensetzung ≈ ${base.name}`,
+      holdings: { ...base.holdings }, regions: { ...base.regions }, sectors: { ...base.sectors },
+      _proxyOf: idx,
+    };
+    this.addETF(key);
+    showToast(`„${name}" hinzugefügt – Zusammensetzung ≈ ${base.name}`, 'success');
+    this._clearAddField();
+  }
+
+  _clearAddField() { const i = document.getElementById('add-etf-input'); if (i) i.value = ''; }
+
+  _resolveKnownETF(input) {
+    const up   = input.trim().toUpperCase();
+    const lead = up.split(/\s[—-]\s| {2,}/)[0].trim();   // "TICKER — Name" → "TICKER"
+    if (ETF_DB[up])   return up;
+    if (ETF_DB[lead]) return lead;
+    if (/^[A-Z]{2}[A-Z0-9]{10}$/.test(up)) {
+      const byIsin = Object.keys(ETF_DB).find(k => ETF_DB[k].isin === up);
+      if (byIsin) return byIsin;
+    }
+    const low = input.trim().toLowerCase();
+    if (low.length >= 4) {
+      const byName = Object.keys(ETF_DB).find(k => (ETF_DB[k].name || '').toLowerCase().includes(low));
+      if (byName) return byName;
+    }
+    return null;
+  }
+
+  _detectIndex(text) {
+    for (const [re, tk] of INDEX_PROXIES) if (re.test(text) && ETF_DB[tk]) return tk;
+    return null;
   }
 
   render() {
@@ -632,6 +709,24 @@ class ETFAnalyzer {
     if (typeof research !== 'undefined') research.search(query);
   }
 }
+
+/* Map an ETF name/keyword to a built-in fund that tracks the same index, so a
+   user-added ETF can borrow that index's composition (ordered: specific first). */
+const INDEX_PROXIES = [
+  [/all[\s-]?(country[\s-]?)?world|ftse[\s-]?all|\bacwi\b/i, 'VWCE'],
+  [/small[\s-]?cap/i, 'IUSN'],
+  [/(world|welt).*(info|technolog|\bit\b|nasdaq)|nasdaq[\s-]?100/i, 'XDWT'],
+  [/msci[\s-]?world|ftse[\s-]?developed|\bworld\b|\bwelt\b/i, 'IWDA'],
+  [/s\s?&\s?p\s?500|s&p500|sp\s?500|\b500\b/i, 'CSPX'],
+  [/emerging|schwellenl|\bem\b|emim/i, 'EIMI'],
+  [/euro[\s-]?stoxx[\s-]?600|stoxx[\s-]?europe[\s-]?600|europe[\s-]?600/i, 'EXSA'],
+  [/\bdax\b/i, 'DBXD'],
+  [/\bemu\b|eurozone|euro[\s-]?area/i, 'MEUD'],
+  [/clean[\s-]?energy|renewable|erneuerbar/i, 'INRG'],
+  [/defen[cs]e|verteidigung|r(ü|ue)stung/i, 'DFNS'],
+  [/\bbank/i, 'BNKS'],
+  [/commodit|rohstoff/i, 'ICOM'],
+];
 
 /* Commodity component → Yahoo Finance futures symbol (for research click-through) */
 const COMMODITY_YH = {

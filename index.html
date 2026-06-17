@@ -188,9 +188,10 @@
           <p class="section-sub">Analyse dein Portfolio auf versteckte Überschneidungen und effektive Gewichtung</p>
         </div>
         <div class="section-actions">
-          <select id="add-etf-select" class="select-input">
-            <option value="">+ ETF manuell hinzufügen</option>
-          </select>
+          <input id="add-etf-input" class="select-input" list="etf-datalist" autocomplete="off"
+                 placeholder="ETF: Ticker, ISIN oder Name…" style="min-width:240px">
+          <datalist id="etf-datalist"></datalist>
+          <button class="btn btn-primary" id="add-etf-btn"><i class="fas fa-plus"></i> Hinzufügen</button>
           <button class="btn btn-ghost" id="clear-etfs-btn" onclick="etfAnalyzer.clearAll()"><i class="fas fa-trash"></i> Alle entfernen</button>
         </div>
       </div>
